@@ -13,6 +13,13 @@
  * `ON DELETE CASCADE`) are the first real example of this. Don't re-run this script against a
  * database with real customer reviews (or, eventually, real orders) without a plan for that.
  *
+ * ⚠️ ON A BRAND-NEW DATABASE, RUN configure-checkout.ts FIRST. Creating priced ProductVariants
+ * here requires the channel to already have an active tax zone (Vendure's ProductPriceApplicator
+ * throws `error.no-active-tax-zone` otherwise) — configure-checkout.ts is what creates and assigns
+ * that zone. On a local dev database this was never an issue because @vendure/create's initial-data
+ * population leaves some default tax zone assigned from the start; a freshly-cloned checkout
+ * against an empty database (e.g. a new server) has none until configure-checkout.ts runs.
+ *
 
  * Data model notes (see the migration plan for the full rationale):
  * - Medusa's free-form `metadata` blob per product is replaced by real Vendure primitives:

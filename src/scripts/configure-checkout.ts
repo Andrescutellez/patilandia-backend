@@ -17,7 +17,9 @@
  *    so patilandia-loyalty can tell contraentrega orders apart and defer their PURCHASE points
  *    until delivery is confirmed instead of at PaymentAuthorized (see event-subscribers.ts).
  *
- * Safe to re-run.
+ * Safe to re-run. On a brand-new database, run this BEFORE seed-patilandia.ts — creating priced
+ * ProductVariants there requires an active tax zone, which this script is what creates and assigns
+ * to the channel (see the note at the top of seed-patilandia.ts for the full explanation).
  *
  *   npx ts-node src/scripts/configure-checkout.ts
  */
@@ -48,6 +50,10 @@ const RATES: Record<string, number> = {
     'standard-shipping': 12000,
     'express-shipping': 25000,
 };
+const SHIPPING_METHOD_NAMES: Record<string, string> = {
+    'standard-shipping': 'Standard Shipping',
+    'express-shipping': 'Express Shipping',
+};
 
 async function run() {
     const { app } = await bootstrapWorker(config);
@@ -60,34 +66,62 @@ async function run() {
     const channelService = app.get(ChannelService);
     const countryService = app.get(CountryService);
 
+    // standard-shipping/express-shipping used to come from @vendure/create's initial-data
+    // population too (same story as Colombia/Standard Tax above) — created here if missing,
+    // updated in place if they already exist (e.g. re-running this script locally).
     const { items } = await shippingMethodService.findAll(ctx, { take: 100 });
-    for (const method of items) {
-        const rate = RATES[method.code];
-        if (rate === undefined) {
-            continue;
-        }
-        await shippingMethodService.update(ctx, {
-            id: method.id,
-            translations: [
-                { languageCode: LanguageCode.en, name: method.name, description: method.description },
+    for (const code of Object.keys(RATES)) {
+        const rate = RATES[code];
+        const existing = items.find(method => method.code === code);
+        const calculator = {
+            code: 'default-shipping-calculator',
+            arguments: [
+                { name: 'rate', value: String(rate * MONEY_FACTOR) },
+                { name: 'includesTax', value: 'auto' },
+                { name: 'taxRate', value: '0' },
             ],
-            calculator: {
-                code: 'default-shipping-calculator',
-                arguments: [
-                    { name: 'rate', value: String(rate * MONEY_FACTOR) },
-                    { name: 'includesTax', value: 'auto' },
-                    { name: 'taxRate', value: '0' },
+        };
+        if (existing) {
+            await shippingMethodService.update(ctx, {
+                id: existing.id,
+                translations: [
+                    { languageCode: LanguageCode.en, name: existing.name, description: existing.description },
                 ],
-            },
-        });
-        Logger.info(`  ✔ ${method.code} -> $${rate.toLocaleString('es-CO')} COP`, loggerCtx);
+                calculator,
+            });
+            Logger.info(`  ✔ ${code} -> $${rate.toLocaleString('es-CO')} COP`, loggerCtx);
+        } else {
+            await shippingMethodService.create(ctx, {
+                code,
+                fulfillmentHandler: 'manual-fulfillment',
+                checker: {
+                    code: 'default-shipping-eligibility-checker',
+                    arguments: [{ name: 'orderMinimum', value: '0' }],
+                },
+                calculator,
+                translations: [
+                    { languageCode: LanguageCode.en, name: SHIPPING_METHOD_NAMES[code] ?? code, description: '' },
+                ],
+            });
+            Logger.info(`  ✔ Método de envío "${code}" creado -> $${rate.toLocaleString('es-CO')} COP`, loggerCtx);
+        }
     }
 
     Logger.info('Configurando el 19% de IVA real de Colombia…', loggerCtx);
+    // Both Colombia (as a Country) and the "Standard Tax" category are normally seeded by
+    // @vendure/create's one-time initial-data population when a project is first scaffolded — that
+    // ran locally weeks ago and its result lives only in the local dev Postgres volume, never in
+    // git. A freshly-cloned checkout against a brand-new database (e.g. this VPS) has neither, so
+    // both are created here instead of assumed, keeping this script fully self-sufficient.
     const { items: countries } = await countryService.findAll(ctx, { take: 500 });
-    const colombia = countries.find(country => country.code === 'CO');
+    let colombia = countries.find(country => country.code === 'CO');
     if (!colombia) {
-        throw new Error('No se encontró Colombia entre los países cargados por el scaffold.');
+        colombia = await countryService.create(ctx, {
+            code: 'CO',
+            enabled: true,
+            translations: [{ languageCode: LanguageCode.es, name: 'Colombia' }],
+        });
+        Logger.info('  ✔ País "Colombia" creado', loggerCtx);
     }
 
     const { items: zones } = await zoneService.findAll(ctx, { take: 100 });
@@ -103,9 +137,10 @@ async function run() {
     }
 
     const { items: taxCategories } = await taxCategoryService.findAll(ctx, { take: 100 });
-    const standardTaxCategory = taxCategories.find(category => category.name === 'Standard Tax');
+    let standardTaxCategory = taxCategories.find(category => category.name === 'Standard Tax');
     if (!standardTaxCategory) {
-        throw new Error('No se encontró la categoría "Standard Tax" que trae el scaffold.');
+        standardTaxCategory = await taxCategoryService.create(ctx, { name: 'Standard Tax', isDefault: true });
+        Logger.info('  ✔ Categoría de impuesto "Standard Tax" creada', loggerCtx);
     }
 
     const { items: existingRates } = await taxRateService.findAll(ctx, { take: 200 }, ['zone', 'category']);
@@ -128,8 +163,26 @@ async function run() {
         Logger.info(`  ✔ Canal apuntado a "${COLOMBIA_ZONE_NAME}" como zona de impuesto default`, loggerCtx);
     }
 
-    Logger.info('Configurando el método de pago contraentrega…', loggerCtx);
+    Logger.info('Configurando los métodos de pago…', loggerCtx);
     const { items: paymentMethods } = await paymentMethodService.findAll(ctx, { take: 100 });
+
+    // standard-payment (the dummy handler the storefront's checkout defaults to) is the third
+    // and last piece that used to come from @vendure/create's initial-data population — same gap
+    // as everything else above on a database that was never scaffolded by that CLI directly.
+    const standardPaymentExists = paymentMethods.some(method => method.code === 'standard-payment');
+    if (!standardPaymentExists) {
+        await paymentMethodService.create(ctx, {
+            code: 'standard-payment',
+            enabled: true,
+            handler: {
+                code: 'dummy-payment-handler',
+                arguments: [{ name: 'automaticSettle', value: 'false' }],
+            },
+            translations: [{ languageCode: LanguageCode.en, name: 'Standard Payment', description: '' }],
+        });
+        Logger.info('  ✔ Método de pago "standard-payment" creado', loggerCtx);
+    }
+
     const cashOnDeliveryExists = paymentMethods.some(method => method.code === CASH_ON_DELIVERY_PAYMENT_METHOD_CODE);
     if (!cashOnDeliveryExists) {
         await paymentMethodService.create(ctx, {
