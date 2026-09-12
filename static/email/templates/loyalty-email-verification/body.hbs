@@ -1,0 +1,22 @@
+{{> header title="Confirmá tu correo" }}
+
+<mj-section background-color="#fafafa">
+    <mj-column>
+        <mj-text color="#525252">
+            Confirmá que este es tu correo para poder canjear tus Patipuntos por descuentos en tu próxima compra.
+        </mj-text>
+
+        <mj-button font-family="Helvetica"
+                   background-color="#7261ff"
+                   color="white"
+                   href="{{ patipuntosVerifyUrl }}?token={{ token }}">
+            Confirmar mi correo
+        </mj-button>
+
+        <mj-text color="#8c8c8c" font-size="12px">
+            Si no pediste esto, podés ignorar este correo.
+        </mj-text>
+    </mj-column>
+</mj-section>
+
+{{> footer }}
