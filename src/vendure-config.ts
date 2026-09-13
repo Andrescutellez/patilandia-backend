@@ -22,13 +22,19 @@ const IS_DEV = process.env.APP_ENV === 'dev';
 // PORT wins because hosting platforms inject it into the environment at runtime, and that
 // must take precedence over any value baked into the .env file at scaffold time.
 const serverPort = +process.env.PORT || +process.env.VENDURE_SERVER_PORT || 3000;
+// Whether to trust one hop of reverse proxy (Nginx) for X-Forwarded-* headers. This is about
+// network topology, not about IS_DEV — a "dev"-labeled staging deployment sitting behind Nginx
+// still needs it, or express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on every
+// request Nginx proxies through. Only a bare `npm run dev:server` on a laptop, with nothing in
+// front of it, should leave TRUST_PROXY unset.
+const trustProxy = process.env.TRUST_PROXY ? +process.env.TRUST_PROXY : false;
 
 export const config: VendureConfig = {
     apiOptions: {
         port: serverPort,
         adminApiPath: 'admin-api',
         shopApiPath: 'shop-api',
-        trustProxy: IS_DEV ? false : 1,
+        trustProxy,
         // Which browser origins may make credentialed requests to the Shop and Admin APIs.
         // In dev any origin is reflected, so a storefront on any port works. In production set
         // CORS_ORIGINS to a comma-separated list of the origins you serve, for example
