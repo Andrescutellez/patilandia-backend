@@ -15,7 +15,7 @@ export class PetProfileShopResolver {
     @Query()
     myPetProfiles(
         @Ctx() ctx: RequestContext,
-        @Args() args: { customerEmail: string },
+        @Args() args: { customerEmail?: string | null },
     ): Promise<PetProfile[]> {
         return this.petProfileService.findForCustomerEmail(ctx, args.customerEmail);
     }
@@ -42,7 +42,7 @@ export class PetProfileShopResolver {
     @Transaction()
     async deletePetProfile(
         @Ctx() ctx: RequestContext,
-        @Args() args: { id: string; customerEmail: string },
+        @Args() args: { id: string; customerEmail?: string | null },
     ): Promise<boolean> {
         await this.petProfileService.delete(ctx, args.id, args.customerEmail);
         return true;

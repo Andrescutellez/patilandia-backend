@@ -45,6 +45,13 @@ origin as the API, so it is not affected.
 
 In development (`APP_ENV=dev`) any origin is allowed, so you do not need to set this locally.
 
+### Storefront URL
+
+Set the `STOREFRONT_URL` environment variable to the storefront's public origin (e.g.
+`https://patilandia.com.co`). It is used to build the links inside transactional emails — account
+verification, password reset, and the Patipuntos magic-link. In development it falls back to
+`http://localhost:3001`; in production the server refuses to start without it.
+
 ### Running directly
 
 You can run the built files directly with the `start` script:

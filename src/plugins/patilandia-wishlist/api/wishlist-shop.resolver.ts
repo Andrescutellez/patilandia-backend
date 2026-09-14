@@ -12,7 +12,7 @@ export class WishlistShopResolver {
     @Query()
     myWishlist(
         @Ctx() ctx: RequestContext,
-        @Args() args: { customerEmail: string },
+        @Args() args: { customerEmail?: string | null },
     ): Promise<WishlistItem[]> {
         return this.wishlistService.findForCustomerEmail(ctx, args.customerEmail);
     }
@@ -21,7 +21,7 @@ export class WishlistShopResolver {
     @Transaction()
     addToWishlist(
         @Ctx() ctx: RequestContext,
-        @Args() args: { customerEmail: string; productId: ID },
+        @Args() args: { customerEmail?: string | null; productId: ID },
     ): Promise<WishlistItem> {
         return this.wishlistService.add(ctx, args.customerEmail, args.productId);
     }
@@ -30,7 +30,7 @@ export class WishlistShopResolver {
     @Transaction()
     async removeFromWishlist(
         @Ctx() ctx: RequestContext,
-        @Args() args: { customerEmail: string; productId: ID },
+        @Args() args: { customerEmail?: string | null; productId: ID },
     ): Promise<boolean> {
         await this.wishlistService.remove(ctx, args.customerEmail, args.productId);
         return true;
@@ -40,7 +40,7 @@ export class WishlistShopResolver {
     @Transaction()
     syncWishlist(
         @Ctx() ctx: RequestContext,
-        @Args() args: { customerEmail: string; productIds: ID[] },
+        @Args() args: { customerEmail?: string | null; productIds: ID[] },
     ): Promise<WishlistItem[]> {
         return this.wishlistService.sync(ctx, args.customerEmail, args.productIds);
     }

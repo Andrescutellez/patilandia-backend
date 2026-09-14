@@ -21,9 +21,9 @@ export class LoyaltyShopResolver {
     @Query()
     async myLoyaltyAccount(
         @Ctx() ctx: RequestContext,
-        @Args() args: { customerEmail: string },
+        @Args() args: { customerEmail?: string | null },
     ): Promise<LoyaltyAccount & { eligible: boolean; redemptionBlockedReasons: string[] }> {
-        const account = await this.loyaltyService.getOrCreateAccount(ctx, args.customerEmail);
+        const account = await this.loyaltyService.getOrCreateAccountForRequest(ctx, args.customerEmail);
         const eligibility = await this.eligibilityService.check(ctx, account);
         return Object.assign(account, {
             eligible: eligibility.eligible,
@@ -34,7 +34,7 @@ export class LoyaltyShopResolver {
     @Query()
     myLoyaltyTransactions(
         @Ctx() ctx: RequestContext,
-        @Args() args: { customerEmail: string },
+        @Args() args: { customerEmail?: string | null },
     ): Promise<LoyaltyTransaction[]> {
         return this.loyaltyService.findTransactionsForEmail(ctx, args.customerEmail);
     }
@@ -70,7 +70,7 @@ export class LoyaltyShopResolver {
     @Transaction()
     async applyLoyaltyRedemption(
         @Ctx() ctx: RequestContext,
-        @Args() args: { orderId: ID; customerEmail: string; points: number },
+        @Args() args: { orderId: ID; customerEmail?: string | null; points: number },
     ): Promise<{ order: Order; pointsRedeemed: number; discountMinorUnits: number }> {
         return this.loyaltyService.applyRedemption(ctx, args);
     }
@@ -79,7 +79,7 @@ export class LoyaltyShopResolver {
     @Transaction()
     removeLoyaltyRedemption(
         @Ctx() ctx: RequestContext,
-        @Args() args: { orderId: ID; customerEmail: string },
+        @Args() args: { orderId: ID; customerEmail?: string | null },
     ): Promise<Order> {
         return this.loyaltyService.removeRedemption(ctx, args);
     }

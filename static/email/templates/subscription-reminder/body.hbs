@@ -1,0 +1,23 @@
+{{> header title="¡Es hora de recomprar!" }}
+
+<mj-section background-color="#fafafa">
+    <mj-column>
+        <mj-text color="#525252">
+            Según tu recompra programada, ya es un buen momento para pedir de nuevo <strong>{{ productName }}</strong>.
+        </mj-text>
+
+        <mj-button font-family="Helvetica"
+                   background-color="#7261ff"
+                   color="white"
+                   href="{{ suscripcionesUrl }}?comprar={{ subscriptionId }}">
+            Comprar ahora
+        </mj-button>
+
+        <mj-text color="#8c8c8c" font-size="12px">
+            No te cobramos nada automáticamente — este correo es solo un recordatorio. Podés pausar o
+            cancelar esta recompra cuando quieras desde tu cuenta.
+        </mj-text>
+    </mj-column>
+</mj-section>
+
+{{> footer }}

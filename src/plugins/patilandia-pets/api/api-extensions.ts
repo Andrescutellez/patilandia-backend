@@ -15,7 +15,8 @@ const petProfileTypes = gql`
   }
 
   input CreatePetProfileInput {
-    customerEmail: String!
+    "Only used for a guest (no session) caller — ignored when logged in."
+    customerEmail: String
     customerFirstName: String
     customerLastName: String
     name: String!
@@ -28,7 +29,8 @@ const petProfileTypes = gql`
 
   input UpdatePetProfileInput {
     id: ID!
-    customerEmail: String!
+    "Only used for a guest (no session) caller — ignored when logged in."
+    customerEmail: String
     name: String
     species: String
     breed: String
@@ -42,14 +44,14 @@ export const shopApiExtensions = gql`
   ${petProfileTypes}
 
   extend type Query {
-    "No login required — identified by email only, same trust level as the rest of the storefront."
-    myPetProfiles(customerEmail: String!): [PetProfile!]!
+    "Uses the logged-in session when there is one; otherwise falls back to customerEmail for guests."
+    myPetProfiles(customerEmail: String): [PetProfile!]!
   }
 
   extend type Mutation {
     createPetProfile(input: CreatePetProfileInput!): PetProfile!
     updatePetProfile(input: UpdatePetProfileInput!): PetProfile!
-    deletePetProfile(id: ID!, customerEmail: String!): Boolean!
+    deletePetProfile(id: ID!, customerEmail: String): Boolean!
   }
 `;
 

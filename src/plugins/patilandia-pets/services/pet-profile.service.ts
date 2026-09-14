@@ -16,7 +16,8 @@ import { PetProfileCreatedEvent } from '../events/pet-profile-created-event';
 const VALID_SPECIES = ['dog', 'cat', 'other'];
 
 export interface CreatePetProfileInput {
-    customerEmail: string;
+    /** Only used for a guest (no session) caller — ignored when a real customer session exists. */
+    customerEmail?: string;
     customerFirstName?: string;
     customerLastName?: string;
     name: string;
@@ -29,7 +30,8 @@ export interface CreatePetProfileInput {
 
 export interface UpdatePetProfileInput {
     id: ID;
-    customerEmail: string;
+    /** Only used for a guest (no session) caller — ignored when a real customer session exists. */
+    customerEmail?: string;
     name?: string;
     species?: string;
     breed?: string;
@@ -61,15 +63,13 @@ export class PetProfileService {
     }
 
     /**
-     * Shop API — "my pets", identified by email only (no password, no login — matches the trust
-     * level of the rest of the storefront, where auth is deferred entirely; see setCustomerEmail
-     * in shop-client.ts for the same pattern already used by the cart). Not real security: anyone
-     * who knows/guesses an email can read that customer's pets. Documented as a known limitation
-     * in Decisiones y Razonamiento — upgrading this to real ownership is exactly what building
-     * customer auth later would fix, with no changes needed here.
+     * Shop API — "my pets". Backed by a real Vendure session when the caller is logged in
+     * (`ctx.activeUserId`); falls back to trusting a client-supplied email only for a guest with no
+     * registered account (see resolveRequestingCustomer). Documented as a known limitation for
+     * guests in Decisiones y Razonamiento — a registered customer no longer has this exposure.
      */
-    async findForCustomerEmail(ctx: RequestContext, email: string): Promise<PetProfile[]> {
-        const customer = await this.findCustomerByEmail(ctx, email);
+    async findForCustomerEmail(ctx: RequestContext, email?: string | null): Promise<PetProfile[]> {
+        const customer = await this.resolveRequestingCustomer(ctx, email);
         if (!customer) {
             return [];
         }
@@ -86,14 +86,10 @@ export class PetProfileService {
         }
         validateSpecies(input.species);
 
-        const customer = await this.customerService.createOrUpdate(ctx, {
-            emailAddress: input.customerEmail,
-            firstName: input.customerFirstName?.trim() || input.customerEmail.split('@')[0] || 'Cliente',
-            lastName: input.customerLastName?.trim() ?? '',
+        const customer = await this.resolveOrCreateRequestingCustomer(ctx, input.customerEmail, {
+            firstName: input.customerFirstName,
+            lastName: input.customerLastName,
         });
-        if (isGraphQlErrorResult(customer)) {
-            throw new UserInputError(customer.message);
-        }
 
         const pet = new PetProfile({
             customer,
@@ -110,7 +106,11 @@ export class PetProfileService {
     }
 
     async update(ctx: RequestContext, input: UpdatePetProfileInput): Promise<PetProfile> {
-        const pet = await this.getOwnedPetProfile(ctx, input.id, input.customerEmail);
+        const customer = await this.resolveRequestingCustomer(ctx, input.customerEmail);
+        if (!customer) {
+            throw new UserInputError('Perfil de mascota no encontrado');
+        }
+        const pet = await this.getOwnedPetProfile(ctx, input.id, customer.id);
 
         if (input.name !== undefined) {
             if (!input.name.trim()) {
@@ -138,8 +138,12 @@ export class PetProfileService {
         return this.connection.getRepository(ctx, PetProfile).save(pet);
     }
 
-    async delete(ctx: RequestContext, id: ID, customerEmail: string): Promise<void> {
-        const pet = await this.getOwnedPetProfile(ctx, id, customerEmail);
+    async delete(ctx: RequestContext, id: ID, customerEmail?: string | null): Promise<void> {
+        const customer = await this.resolveRequestingCustomer(ctx, customerEmail);
+        if (!customer) {
+            throw new UserInputError('Perfil de mascota no encontrado');
+        }
+        const pet = await this.getOwnedPetProfile(ctx, id, customer.id);
         await this.connection.getRepository(ctx, PetProfile).remove(pet);
     }
 
@@ -153,11 +157,62 @@ export class PetProfileService {
         return this.connection.getRepository(ctx, Customer).findOne({ where: { emailAddress: email } });
     }
 
-    private async getOwnedPetProfile(ctx: RequestContext, id: ID, customerEmail: string): Promise<PetProfile> {
+    private async getOwnedPetProfile(ctx: RequestContext, id: ID, customerId: ID): Promise<PetProfile> {
         const pet = await this.connection.getEntityOrThrow(ctx, PetProfile, id, { relations: ['customer'] });
-        if (pet.customer.emailAddress !== customerEmail) {
+        if (pet.customer.id !== customerId) {
             throw new UserInputError('Perfil de mascota no encontrado');
         }
         return pet;
+    }
+
+    /**
+     * Query-side identity resolution: a real logged-in session always wins over a client-supplied
+     * email. For an anonymous caller, the email is trusted only if it does NOT already belong to a
+     * registered account (`customer.user` is eager-loaded on Customer, so this is free to check) —
+     * once someone has a password, typing their email is no longer sufficient proof of identity.
+     * Returns null for both "no such customer" and "that email is registered, log in" — deliberately
+     * indistinguishable, so this can't be used to enumerate which emails have accounts.
+     */
+    private async resolveRequestingCustomer(ctx: RequestContext, clientEmail?: string | null): Promise<Customer | null> {
+        if (ctx.activeUserId) {
+            return (await this.customerService.findOneByUserId(ctx, ctx.activeUserId)) ?? null;
+        }
+        if (!clientEmail) return null;
+        const customer = await this.findCustomerByEmail(ctx, clientEmail);
+        if (customer?.user) return null;
+        return customer;
+    }
+
+    /** Mutation-side counterpart — may create a brand-new guest Customer, so it throws (rather than
+     *  returning null) when identity can't be resolved, since a mutation deserves a clear "log in"
+     *  error instead of a silent no-op. */
+    private async resolveOrCreateRequestingCustomer(
+        ctx: RequestContext,
+        clientEmail?: string | null,
+        nameHints?: { firstName?: string; lastName?: string },
+    ): Promise<Customer> {
+        if (ctx.activeUserId) {
+            const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+            if (!customer) {
+                throw new UserInputError('No se encontró un cliente asociado a esta sesión');
+            }
+            return customer;
+        }
+        if (!clientEmail) {
+            throw new UserInputError('Se requiere iniciar sesión o indicar un correo');
+        }
+        const existing = await this.findCustomerByEmail(ctx, clientEmail);
+        if (existing?.user) {
+            throw new UserInputError('Ya existe una cuenta con este correo — iniciá sesión para continuar');
+        }
+        const customer = await this.customerService.createOrUpdate(ctx, {
+            emailAddress: clientEmail,
+            firstName: nameHints?.firstName?.trim() || clientEmail.split('@')[0] || 'Cliente',
+            lastName: nameHints?.lastName?.trim() ?? '',
+        });
+        if (isGraphQlErrorResult(customer)) {
+            throw new UserInputError(customer.message);
+        }
+        return customer;
     }
 }

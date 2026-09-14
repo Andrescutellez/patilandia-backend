@@ -14,9 +14,17 @@ import path from 'path';
 import { PatilandiaAdminPlugin } from './plugins/patilandia-admin/patilandia-admin.plugin';
 import { PatilandiaReviewsPlugin } from './plugins/patilandia-reviews/patilandia-reviews.plugin';
 import { PatilandiaPetsPlugin } from './plugins/patilandia-pets/patilandia-pets.plugin';
+import { PatilandiaQaPlugin } from './plugins/patilandia-qa/patilandia-qa.plugin';
 import { PatilandiaWishlistPlugin } from './plugins/patilandia-wishlist/patilandia-wishlist.plugin';
 import { loyaltyVerificationHandler } from './plugins/patilandia-loyalty/email/loyalty-verification-handler';
 import { PatilandiaLoyaltyPlugin } from './plugins/patilandia-loyalty/patilandia-loyalty.plugin';
+import { PersonalizationPriceCalculationStrategy } from './plugins/patilandia-personalization/pricing/personalization-price-calculation-strategy';
+import { PatilandiaPersonalizationPlugin } from './plugins/patilandia-personalization/patilandia-personalization.plugin';
+import { PatilandiaGiftsPlugin } from './plugins/patilandia-gifts/patilandia-gifts.plugin';
+import { subscriptionReminderHandler } from './plugins/patilandia-subscriptions/email/subscription-reminder-handler';
+import { PatilandiaSubscriptionsPlugin } from './plugins/patilandia-subscriptions/patilandia-subscriptions.plugin';
+import { PatilandiaWhatsappPlugin } from './plugins/patilandia-whatsapp/patilandia-whatsapp.plugin';
+import { PatilandiaProcurementPlugin } from './plugins/patilandia-procurement/patilandia-procurement.plugin';
 
 const IS_DEV = process.env.APP_ENV === 'dev';
 // PORT wins because hosting platforms inject it into the environment at runtime, and that
@@ -28,6 +36,13 @@ const serverPort = +process.env.PORT || +process.env.VENDURE_SERVER_PORT || 3000
 // request Nginx proxies through. Only a bare `npm run dev:server` on a laptop, with nothing in
 // front of it, should leave TRUST_PROXY unset.
 const trustProxy = process.env.TRUST_PROXY ? +process.env.TRUST_PROXY : false;
+// Base URL of the storefront, used to build links inside transactional emails (account
+// verification, password reset, Patipuntos magic-link). Falls back to the local dev port in
+// dev; must be set explicitly in production or these links point nowhere real.
+const storefrontUrl = process.env.STOREFRONT_URL ?? (IS_DEV ? 'http://localhost:3001' : undefined);
+if (!storefrontUrl) {
+    throw new Error('STOREFRONT_URL must be set in production');
+}
 
 export const config: VendureConfig = {
     apiOptions: {
@@ -81,6 +96,12 @@ export const config: VendureConfig = {
     paymentOptions: {
         paymentMethodHandlers: [dummyPaymentHandler],
     },
+    // Lets a line's price depend on its own customFields (e.g. a personalization surcharge) —
+    // see patilandia-personalization/pricing/personalization-price-calculation-strategy.ts. The
+    // strategy itself decides the surcharge from its own config, never from what the client sends.
+    orderOptions: {
+        orderItemPriceCalculationStrategy: new PersonalizationPriceCalculationStrategy(),
+    },
     // Lets the Patilandia seed script (src/scripts/seed-patilandia.ts) reference product/category
     // images by filename only — resolved against the storefront's real asset folder in the
     // sibling `patilandia` repo, so no image needs to be duplicated between the two repos.
@@ -113,6 +134,12 @@ export const config: VendureConfig = {
             { name: 'reviewCount', type: 'int' },
             { name: 'badge', type: 'string' },
             { name: 'featured', type: 'boolean', defaultValue: false },
+            // Admin-only toggle for patilandia-subscriptions — configurable per product, same
+            // principle as personalization's per-product enable flag. No per-product frequency
+            // config on purpose (the user explicitly didn't want that for this MVP): every
+            // repurchasable product shares the same fixed frequency list (see
+            // SUBSCRIPTION_FREQUENCIES_DAYS in that plugin's constants.ts).
+            { name: 'repurchaseEnabled', type: 'boolean', defaultValue: false },
         ],
         ProductVariant: [
             { name: 'weightKg', type: 'float' },
@@ -143,6 +170,35 @@ export const config: VendureConfig = {
         Order: [
             { name: 'loyaltyPointsEarned', type: 'int', defaultValue: 0 },
             { name: 'loyaltyPointsRedeemed', type: 'int', defaultValue: 0 },
+            // Set by the storefront via the native `setOrderCustomFields` Shop API mutation when
+            // the shopper toggles "¿Es un regalo?" at checkout — see patilandia-gifts. There's no
+            // plugin/entity behind these: Vendure's own customFields mechanism is the whole feature.
+            { name: 'isGift', type: 'boolean', defaultValue: false },
+            { name: 'giftWrap', type: 'boolean', defaultValue: false },
+            { name: 'giftMessage', type: 'text', nullable: true },
+            { name: 'giftSenderName', type: 'string', nullable: true },
+            { name: 'giftAnonymous', type: 'boolean', defaultValue: false },
+        ],
+        // A JSON snapshot of what the shopper answered for THIS line's personalization (field
+        // label + value, not just an id, so an old order stays readable even if the field is later
+        // renamed or removed) — see patilandia-personalization. The surcharge itself isn't stored
+        // here: it's just the difference between this line's real unit price and the variant's
+        // base price, so there's nothing to keep in sync.
+        // subscriptionId ties a specific line to the patilandia-subscriptions "Comprar ahora" that
+        // created it — kept at the line level (not on Order) so two different subscriptions' items
+        // in the same cart don't clobber each other. Set via the same addItemToOrder customFields
+        // argument personalization already uses, no new mutation needed.
+        OrderLine: [
+            { name: 'personalizationValues', type: 'text', nullable: true },
+            { name: 'subscriptionId', type: 'string', nullable: true },
+        ],
+        // Vendure has no native "barrio"/delivery-notes fields — these travel automatically
+        // through `setOrderShippingAddress` once declared here, same mechanism as everything
+        // else in this customFields block. Used for the gift recipient's address (see
+        // patilandia-gifts) but also available for a buyer's own address if useful later.
+        Address: [
+            { name: 'neighborhood', type: 'string', nullable: true },
+            { name: 'deliveryNotes', type: 'text', nullable: true },
         ],
     },
     plugins: [
@@ -176,18 +232,22 @@ export const config: VendureConfig = {
             devMode: true,
             outputPath: path.join(__dirname, '../static/email/test-emails'),
             route: 'mailbox',
-            handlers: [...defaultEmailHandlers, loyaltyVerificationHandler],
+            handlers: [...defaultEmailHandlers, loyaltyVerificationHandler, subscriptionReminderHandler],
             templateLoader: new FileBasedTemplateLoader(path.join(__dirname, '../static/email/templates')),
             globalTemplateVars: {
-                // The following variables will change depending on your storefront implementation.
-                // Here we are assuming a storefront running at http://localhost:8080.
                 fromAddress: '"example" <noreply@example.com>',
-                verifyEmailAddressUrl: 'http://localhost:8080/verify',
-                passwordResetUrl: 'http://localhost:8080/password-reset',
-                changeEmailAddressUrl: 'http://localhost:8080/verify-email-address-change',
+                verifyEmailAddressUrl: `${storefrontUrl}/cuenta/verificar`,
+                passwordResetUrl: `${storefrontUrl}/cuenta/restablecer-contrasena`,
+                // No storefront page exists for this yet — email-change UI is out of scope for
+                // the initial real-accounts rollout. The link is correct, just leads nowhere until
+                // that page is built.
+                changeEmailAddressUrl: `${storefrontUrl}/cuenta/verificar-cambio-correo`,
                 // Patipuntos' own magic-link email verification (not the native flow above, which
                 // requires a real password-based User account) — points at the real storefront.
-                patipuntosVerifyUrl: 'http://localhost:3001/patipuntos/verificar'
+                patipuntosVerifyUrl: `${storefrontUrl}/patipuntos/verificar`,
+                // patilandia-subscriptions' daily reminder email links here — see
+                // subscription-reminder-handler.ts.
+                suscripcionesUrl: `${storefrontUrl}/cuenta/suscripciones`
             },
         }),
         DashboardPlugin.init({
@@ -198,8 +258,14 @@ export const config: VendureConfig = {
         }),
         PatilandiaAdminPlugin.init({}),
         PatilandiaReviewsPlugin.init({}),
+        PatilandiaQaPlugin.init({}),
         PatilandiaPetsPlugin.init({}),
         PatilandiaWishlistPlugin.init({}),
         PatilandiaLoyaltyPlugin.init({}),
+        PatilandiaPersonalizationPlugin.init({}),
+        PatilandiaGiftsPlugin.init({}),
+        PatilandiaSubscriptionsPlugin.init({}),
+        PatilandiaWhatsappPlugin.init({}),
+        PatilandiaProcurementPlugin.init({}),
     ],
 };

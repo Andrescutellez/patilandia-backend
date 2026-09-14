@@ -64,13 +64,27 @@ export function registerLoyaltyEventSubscribers(
     });
 
     eventBus.ofType(ProductReviewApprovedEvent).subscribe(event => {
-        void loyaltyService.award(event.ctx, {
-            ruleCode: 'REVIEW',
-            customerEmail: event.review.authorEmail,
-            referenceType: 'ProductReview',
-            referenceId: String(event.review.id),
-            idempotencyKey: `earn:review:${event.review.id}:REVIEW`,
-        });
+        void (async () => {
+            // No identity was resolved at submission time (unrecognized email, no session) —
+            // there's no real customer to check a purchase against, so no points, ever.
+            if (!event.review.customer) return;
+            const verified = await loyaltyService.hasVerifiedPurchase(
+                event.ctx,
+                event.review.customer.id,
+                event.review.product.id,
+            );
+            if (!verified) return;
+            await loyaltyService.award(event.ctx, {
+                ruleCode: 'REVIEW',
+                customerEmail: event.review.customer.emailAddress,
+                referenceType: 'ProductReview',
+                referenceId: String(event.review.id),
+                // Keyed by customer+product, not by review id — so re-reviewing the same product
+                // (if it were ever allowed again) or re-approving a review after unapproving it
+                // still can't earn a second REVIEW payout for the same product.
+                idempotencyKey: `earn:review:customer:${event.review.customer.id}:product:${event.review.product.id}:REVIEW`,
+            });
+        })();
     });
 }
 

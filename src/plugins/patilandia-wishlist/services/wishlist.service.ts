@@ -13,8 +13,9 @@ import {
 import { WishlistItem } from '../entities/wishlist-item.entity';
 
 /**
- * Same trust model as patilandia-pets: identified by email only, no password, no login. See
- * PetProfileService for the full reasoning (matches Vendure's own guest-checkout heuristic).
+ * Same identity model as patilandia-pets: a real logged-in session wins when there is one;
+ * otherwise falls back to trusting a client-supplied email, but only for a guest with no
+ * registered account. See PetProfileService for the full reasoning.
  */
 @Injectable()
 export class WishlistService {
@@ -30,21 +31,25 @@ export class WishlistService {
             .find({ relations: ['customer', 'product'], order: { createdAt: 'DESC' } });
     }
 
-    async findForCustomerEmail(ctx: RequestContext, email: string): Promise<WishlistItem[]> {
-        const customer = await this.findCustomerByEmail(ctx, email);
+    async findForCustomerEmail(ctx: RequestContext, email?: string | null): Promise<WishlistItem[]> {
+        const customer = await this.resolveRequestingCustomer(ctx, email);
         if (!customer) {
             return [];
         }
+        return this.findForCustomer(ctx, customer.id);
+    }
+
+    private findForCustomer(ctx: RequestContext, customerId: ID): Promise<WishlistItem[]> {
         return this.connection.getRepository(ctx, WishlistItem).find({
-            where: { customer: { id: customer.id } },
+            where: { customer: { id: customerId } },
             relations: ['product', 'customer'],
             order: { createdAt: 'ASC' },
         });
     }
 
     /** Idempotent — adding a product already in the wishlist just returns the existing row. */
-    async add(ctx: RequestContext, email: string, productId: ID): Promise<WishlistItem> {
-        const customer = await this.getOrCreateCustomer(ctx, email);
+    async add(ctx: RequestContext, email: string | undefined | null, productId: ID): Promise<WishlistItem> {
+        const customer = await this.resolveOrCreateRequestingCustomer(ctx, email);
         const product = await this.connection.getEntityOrThrow(ctx, Product, productId, {
             channelId: ctx.channelId,
         });
@@ -62,8 +67,8 @@ export class WishlistService {
     }
 
     /** Idempotent — removing a product that isn't there (or a customer that doesn't exist yet) is a no-op. */
-    async remove(ctx: RequestContext, email: string, productId: ID): Promise<void> {
-        const customer = await this.findCustomerByEmail(ctx, email);
+    async remove(ctx: RequestContext, email: string | undefined | null, productId: ID): Promise<void> {
+        const customer = await this.resolveRequestingCustomer(ctx, email);
         if (!customer) {
             return;
         }
@@ -81,8 +86,8 @@ export class WishlistService {
      * saved anonymously in localStorage, without dropping anything already stored server-side
      * (e.g. from a previous visit on another device). Never removes anything; only adds what's missing.
      */
-    async sync(ctx: RequestContext, email: string, productIds: ID[]): Promise<WishlistItem[]> {
-        const customer = await this.getOrCreateCustomer(ctx, email);
+    async sync(ctx: RequestContext, email: string | undefined | null, productIds: ID[]): Promise<WishlistItem[]> {
+        const customer = await this.resolveOrCreateRequestingCustomer(ctx, email);
         const existing = await this.connection.getRepository(ctx, WishlistItem).find({
             where: { customer: { id: customer.id } },
             relations: ['product'],
@@ -102,7 +107,7 @@ export class WishlistService {
             }
         }
 
-        return this.findForCustomerEmail(ctx, email);
+        return this.findForCustomer(ctx, customer.id);
     }
 
     /** Admin-only cleanup — no ownership check, gated by Permission.DeleteCustomer instead. */
@@ -115,10 +120,36 @@ export class WishlistService {
         return this.connection.getRepository(ctx, Customer).findOne({ where: { emailAddress: email } });
     }
 
-    private async getOrCreateCustomer(ctx: RequestContext, email: string): Promise<Customer> {
+    /** See PetProfileService.resolveRequestingCustomer for the full reasoning — identical shape. */
+    private async resolveRequestingCustomer(ctx: RequestContext, clientEmail?: string | null): Promise<Customer | null> {
+        if (ctx.activeUserId) {
+            return (await this.customerService.findOneByUserId(ctx, ctx.activeUserId)) ?? null;
+        }
+        if (!clientEmail) return null;
+        const customer = await this.findCustomerByEmail(ctx, clientEmail);
+        if (customer?.user) return null;
+        return customer;
+    }
+
+    /** See PetProfileService.resolveOrCreateRequestingCustomer — identical shape. */
+    private async resolveOrCreateRequestingCustomer(ctx: RequestContext, clientEmail?: string | null): Promise<Customer> {
+        if (ctx.activeUserId) {
+            const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+            if (!customer) {
+                throw new UserInputError('No se encontró un cliente asociado a esta sesión');
+            }
+            return customer;
+        }
+        if (!clientEmail) {
+            throw new UserInputError('Se requiere iniciar sesión o indicar un correo');
+        }
+        const existing = await this.findCustomerByEmail(ctx, clientEmail);
+        if (existing?.user) {
+            throw new UserInputError('Ya existe una cuenta con este correo — iniciá sesión para continuar');
+        }
         const customer = await this.customerService.createOrUpdate(ctx, {
-            emailAddress: email,
-            firstName: email.split('@')[0] || 'Cliente',
+            emailAddress: clientEmail,
+            firstName: clientEmail.split('@')[0] || 'Cliente',
             lastName: '',
         });
         if (isGraphQlErrorResult(customer)) {

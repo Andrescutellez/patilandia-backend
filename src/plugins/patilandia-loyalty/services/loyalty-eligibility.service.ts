@@ -17,11 +17,15 @@ export interface EligibilityResult {
 
 /**
  * Redemption eligibility, as a list of named checks rather than one rigid `if`. Today: a verified
- * email (patilandia-loyalty's own magic-link flow, not Vendure's native — see
- * LoyaltyVerificationToken) and at least one completed purchase — both explicit, user-requested
- * trust signals, chosen over an arbitrary account-age rule. Adding a future check (account age,
- * purchase history depth, an activity rate-limit, a manual trust/block flag) means appending one
- * more entry to `runChecks`, not touching the checks already here or any of their call sites.
+ * email and at least one completed purchase — both explicit, user-requested trust signals, chosen
+ * over an arbitrary account-age rule. "Verified email" is satisfied either way a customer can prove
+ * it: patilandia-loyalty's own magic-link flow (LoyaltyVerificationToken, for guests who never
+ * register) OR a real Vendure account with native email verification already completed
+ * (`customer.user.verified` — objectively stronger proof, requires `account.customer` to be
+ * loaded, which every call site already does via getOrCreateAccountForCustomer's `relations:
+ * ['customer']`). Adding a future check (account age, purchase history depth, an activity
+ * rate-limit, a manual trust/block flag) means appending one more entry to `runChecks`, not
+ * touching the checks already here or any of their call sites.
  */
 @Injectable()
 export class LoyaltyEligibilityService {
@@ -33,11 +37,12 @@ export class LoyaltyEligibilityService {
     }
 
     private runChecks(account: LoyaltyAccount): EligibilityCheck[] {
+        const nativelyVerified = account.customer?.user?.verified === true;
         return [
             {
                 code: 'emailVerified',
                 label: 'Verificá tu correo',
-                passed: account.emailVerifiedAt !== null,
+                passed: account.emailVerifiedAt !== null || nativelyVerified,
             },
             {
                 code: 'hasCompletedPurchase',

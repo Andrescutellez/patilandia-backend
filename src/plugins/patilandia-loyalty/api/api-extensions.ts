@@ -59,9 +59,9 @@ export const shopApiExtensions = gql`
   ${sharedTypes}
 
   extend type Query {
-    "No login required — identified by email only, same trust level as the rest of the storefront."
-    myLoyaltyAccount(customerEmail: String!): LoyaltyAccount!
-    myLoyaltyTransactions(customerEmail: String!): [LoyaltyTransaction!]!
+    "Uses the logged-in session when there is one; otherwise falls back to customerEmail for guests."
+    myLoyaltyAccount(customerEmail: String): LoyaltyAccount!
+    myLoyaltyTransactions(customerEmail: String): [LoyaltyTransaction!]!
     "Public redemption/valuation config — the storefront needs it to compute the redeem cap live."
     loyaltySettings: LoyaltySettings!
     "Only the enabled rules, for a 'cómo ganar puntos' display."
@@ -73,8 +73,8 @@ export const shopApiExtensions = gql`
     requestLoyaltyEmailVerification(customerEmail: String!): Boolean!
     confirmLoyaltyEmailVerification(token: String!): Boolean!
     "Validates ownership, eligibility, balance and the redemption cap server-side — the points value is never trusted from the client beyond acting as a ceiling."
-    applyLoyaltyRedemption(orderId: ID!, customerEmail: String!, points: Int!): LoyaltyRedemptionResult!
-    removeLoyaltyRedemption(orderId: ID!, customerEmail: String!): Order!
+    applyLoyaltyRedemption(orderId: ID!, customerEmail: String, points: Int!): LoyaltyRedemptionResult!
+    removeLoyaltyRedemption(orderId: ID!, customerEmail: String): Order!
   }
 `;
 

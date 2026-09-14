@@ -12,7 +12,7 @@ import {
 } from '@vendure/core';
 import { In, IsNull, QueryFailedError } from 'typeorm';
 
-import { DEFAULT_LOYALTY_RULES } from '../constants';
+import { CASH_ON_DELIVERY_PAYMENT_METHOD_CODE, DEFAULT_LOYALTY_RULES } from '../constants';
 import { LoyaltyAccount } from '../entities/loyalty-account.entity';
 import { LoyaltyRule } from '../entities/loyalty-rule.entity';
 import { LoyaltySettings } from '../entities/loyalty-settings.entity';
@@ -131,14 +131,30 @@ export class LoyaltyService {
     // Accounts
     // ---------------------------------------------------------------------------------------
 
-    async findAccountByEmail(ctx: RequestContext, email: string): Promise<LoyaltyAccount | null> {
-        const customer = await this.connection.getRepository(ctx, Customer).findOne({ where: { emailAddress: email } });
+    /** Client-facing lookup — a real logged-in session wins over a client-supplied email, and an
+     *  anonymous caller can no longer resolve a registered customer's account by email alone. See
+     *  PetProfileService.resolveRequestingCustomer for the full reasoning. */
+    async findAccountForRequest(ctx: RequestContext, clientEmail?: string | null): Promise<LoyaltyAccount | null> {
+        const customer = await this.resolveRequestingCustomer(ctx, clientEmail);
         if (!customer) return null;
-        return this.connection.getRepository(ctx, LoyaltyAccount).findOne({ where: { customer: { id: customer.id } } });
+        return this.connection
+            .getRepository(ctx, LoyaltyAccount)
+            .findOne({ where: { customer: { id: customer.id } }, relations: ['customer'] });
     }
 
+    /** Internal/trusted entry point — `email` here always comes from the system's own record of the
+     *  order/event customer (order confirmation, signup, review approval, birthday), never directly
+     *  from an untrusted client argument. Used by award()/markOrderCompleted()/adjustBalance(). */
     async getOrCreateAccount(ctx: RequestContext, email: string): Promise<LoyaltyAccount> {
         const customer = await this.getOrCreateCustomer(ctx, email);
+        return this.getOrCreateAccountForCustomer(ctx, customer);
+    }
+
+    /** Client-facing counterpart of getOrCreateAccount — a real logged-in session wins; an
+     *  anonymous caller can create/reuse a guest account by email only if that email isn't already
+     *  registered. Used by myLoyaltyAccount and applyRedemption. */
+    async getOrCreateAccountForRequest(ctx: RequestContext, clientEmail?: string | null): Promise<LoyaltyAccount> {
+        const customer = await this.resolveOrCreateRequestingCustomer(ctx, clientEmail);
         return this.getOrCreateAccountForCustomer(ctx, customer);
     }
 
@@ -171,8 +187,8 @@ export class LoyaltyService {
             .find({ relations: ['customer'], order: { updatedAt: 'DESC' } });
     }
 
-    async findTransactionsForEmail(ctx: RequestContext, email: string): Promise<LoyaltyTransaction[]> {
-        const account = await this.findAccountByEmail(ctx, email);
+    async findTransactionsForEmail(ctx: RequestContext, email?: string | null): Promise<LoyaltyTransaction[]> {
+        const account = await this.findAccountForRequest(ctx, email);
         if (!account) return [];
         return this.connection
             .getRepository(ctx, LoyaltyTransaction)
@@ -269,9 +285,10 @@ export class LoyaltyService {
 
     async applyRedemption(
         ctx: RequestContext,
-        params: { orderId: ID; customerEmail: string; points: number },
+        params: { orderId: ID; customerEmail?: string | null; points: number },
     ): Promise<{ order: Order; pointsRedeemed: number; discountMinorUnits: number }> {
-        const order = await this.getOwnedActiveOrder(ctx, params.orderId, params.customerEmail);
+        const customer = await this.resolveOrCreateRequestingCustomer(ctx, params.customerEmail);
+        const order = await this.getOwnedActiveOrder(ctx, params.orderId, customer.id);
 
         // The ledger is append-only, so a previously-removed redemption's REDEEM row never goes
         // away — "is there one currently active" has to be the net of REDEEM and REVERSAL rows for
@@ -288,7 +305,7 @@ export class LoyaltyService {
             );
         }
 
-        const account = await this.getOrCreateAccount(ctx, params.customerEmail);
+        const account = await this.getOrCreateAccountForCustomer(ctx, customer);
         const eligibility = await this.eligibilityService.check(ctx, account);
         if (!eligibility.eligible) {
             throw new UserInputError(`No podés canjear todavía: ${eligibility.failedChecks.join(', ')}`);
@@ -350,8 +367,12 @@ export class LoyaltyService {
         return { order: updatedOrder, pointsRedeemed: allowedPoints, discountMinorUnits };
     }
 
-    async removeRedemption(ctx: RequestContext, params: { orderId: ID; customerEmail: string }): Promise<Order> {
-        const order = await this.getOwnedActiveOrder(ctx, params.orderId, params.customerEmail);
+    async removeRedemption(ctx: RequestContext, params: { orderId: ID; customerEmail?: string | null }): Promise<Order> {
+        const customer = await this.resolveRequestingCustomer(ctx, params.customerEmail);
+        if (!customer) {
+            throw new UserInputError('Pedido no encontrado');
+        }
+        const order = await this.getOwnedActiveOrder(ctx, params.orderId, customer.id);
 
         // Same net-of-REDEEM-and-REVERSAL reasoning as applyRedemption's gate check. Since a new
         // redemption can't be applied while one is already active, there's at most one un-reversed
@@ -442,6 +463,36 @@ export class LoyaltyService {
             metadata: { reason: params.reason },
         });
         return result as LoyaltyTransaction;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Cross-plugin verification (used by patilandia-reviews' approval flow, see
+    // event-subscribers.ts's ProductReviewApprovedEvent subscriber)
+    // ---------------------------------------------------------------------------------------
+
+    /** Whether this customer has a real, completed order containing this product — the gate for
+     *  awarding REVIEW points, so reviewing a product you never bought can't earn anything. Uses
+     *  the exact same "completed" definition as the PURCHASE/FIRST_PURCHASE award path below
+     *  (prepaid counts as soon as the order is placed; cash-on-delivery only once actually
+     *  Delivered, since PaymentAuthorized alone doesn't mean the money is secured yet) — see
+     *  isCashOnDelivery/handleOrderDelivered in event-subscribers.ts for the original reasoning. */
+    async hasVerifiedPurchase(ctx: RequestContext, customerId: ID, productId: ID): Promise<boolean> {
+        const orders = await this.connection
+            .getRepository(ctx, Order)
+            .createQueryBuilder('order')
+            .leftJoinAndSelect('order.lines', 'line')
+            .leftJoinAndSelect('line.productVariant', 'variant')
+            .leftJoinAndSelect('order.payments', 'payment')
+            .where('order.customerId = :customerId', { customerId })
+            .andWhere('variant.productId = :productId', { productId })
+            .getMany();
+        return orders.some(order => this.isOrderCompleted(order));
+    }
+
+    private isOrderCompleted(order: Order): boolean {
+        if (order.state === 'Cancelled') return false;
+        const isCod = order.payments?.some(payment => payment.method === CASH_ON_DELIVERY_PAYMENT_METHOD_CODE) ?? false;
+        return isCod ? order.state === 'Delivered' : order.active === false;
     }
 
     // ---------------------------------------------------------------------------------------
@@ -548,15 +599,45 @@ export class LoyaltyService {
     /** Same ownership-check shape as PetProfileService.getOwnedPetProfile, but the stakes are
      *  higher here — failing to check this doesn't just leak a stranger's data, it debits a
      *  stranger's point balance. */
-    private async getOwnedActiveOrder(ctx: RequestContext, orderId: ID, customerEmail: string): Promise<Order> {
+    private async getOwnedActiveOrder(ctx: RequestContext, orderId: ID, customerId: ID): Promise<Order> {
         const order = await this.connection.getEntityOrThrow(ctx, Order, orderId, { relations: ['customer'] });
-        if (!order.customer || order.customer.emailAddress !== customerEmail) {
+        if (!order.customer || order.customer.id !== customerId) {
             throw new UserInputError('Pedido no encontrado');
         }
         if (!order.active) {
             throw new UserInputError('Este pedido ya no admite cambios');
         }
         return order;
+    }
+
+    /** See PetProfileService.resolveRequestingCustomer for the full reasoning — identical shape. */
+    private async resolveRequestingCustomer(ctx: RequestContext, clientEmail?: string | null): Promise<Customer | null> {
+        if (ctx.activeUserId) {
+            return (await this.customerService.findOneByUserId(ctx, ctx.activeUserId)) ?? null;
+        }
+        if (!clientEmail) return null;
+        const customer = await this.connection.getRepository(ctx, Customer).findOne({ where: { emailAddress: clientEmail } });
+        if (customer?.user) return null;
+        return customer;
+    }
+
+    /** See PetProfileService.resolveOrCreateRequestingCustomer — identical shape. */
+    private async resolveOrCreateRequestingCustomer(ctx: RequestContext, clientEmail?: string | null): Promise<Customer> {
+        if (ctx.activeUserId) {
+            const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+            if (!customer) {
+                throw new UserInputError('No se encontró un cliente asociado a esta sesión');
+            }
+            return customer;
+        }
+        if (!clientEmail) {
+            throw new UserInputError('Se requiere iniciar sesión o indicar un correo');
+        }
+        const existing = await this.connection.getRepository(ctx, Customer).findOne({ where: { emailAddress: clientEmail } });
+        if (existing?.user) {
+            throw new UserInputError('Ya existe una cuenta con este correo — iniciá sesión para continuar');
+        }
+        return this.getOrCreateCustomer(ctx, clientEmail);
     }
 
     /**
