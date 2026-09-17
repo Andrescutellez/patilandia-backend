@@ -23,6 +23,13 @@ export class PetProfile extends VendureEntity {
     @Column({ default: '' })
     breed: string;
 
+    /** Free-text name of the pet's owner, captured directly on the pet form — kept separate from
+     *  `customer.firstName`/`lastName` because a guest identified only by email (see
+     *  resolveOrCreateRequestingCustomer below) often has no real name on that Customer row, e.g.
+     *  just the email's local-part. Optional and blank for pets created before this field existed. */
+    @Column({ default: '' })
+    ownerName: string;
+
     @Column({ type: 'timestamp', nullable: true })
     birthDate: Date | null;
 

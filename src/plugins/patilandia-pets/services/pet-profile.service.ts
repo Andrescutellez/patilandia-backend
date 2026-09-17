@@ -23,6 +23,7 @@ export interface CreatePetProfileInput {
     name: string;
     species: string;
     breed?: string;
+    ownerName?: string;
     birthDate?: string;
     sizeLabel?: string;
     notes?: string;
@@ -35,6 +36,7 @@ export interface UpdatePetProfileInput {
     name?: string;
     species?: string;
     breed?: string;
+    ownerName?: string;
     birthDate?: string;
     sizeLabel?: string;
     notes?: string;
@@ -96,6 +98,7 @@ export class PetProfileService {
             name: input.name.trim(),
             species: input.species,
             breed: input.breed?.trim() ?? '',
+            ownerName: input.ownerName?.trim() ?? '',
             birthDate: input.birthDate ? new Date(input.birthDate) : null,
             sizeLabel: input.sizeLabel ?? '',
             notes: input.notes?.trim() ?? '',
@@ -124,6 +127,9 @@ export class PetProfileService {
         }
         if (input.breed !== undefined) {
             pet.breed = input.breed.trim();
+        }
+        if (input.ownerName !== undefined) {
+            pet.ownerName = input.ownerName.trim();
         }
         if (input.birthDate !== undefined) {
             pet.birthDate = input.birthDate ? new Date(input.birthDate) : null;

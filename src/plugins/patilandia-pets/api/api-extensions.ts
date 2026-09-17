@@ -8,6 +8,7 @@ const petProfileTypes = gql`
     name: String!
     species: String!
     breed: String!
+    ownerName: String!
     birthDate: DateTime
     sizeLabel: String!
     notes: String!
@@ -22,6 +23,7 @@ const petProfileTypes = gql`
     name: String!
     species: String!
     breed: String
+    ownerName: String
     birthDate: DateTime
     sizeLabel: String
     notes: String
@@ -34,6 +36,7 @@ const petProfileTypes = gql`
     name: String
     species: String
     breed: String
+    ownerName: String
     birthDate: DateTime
     sizeLabel: String
     notes: String
