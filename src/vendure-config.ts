@@ -25,6 +25,7 @@ import { subscriptionReminderHandler } from './plugins/patilandia-subscriptions/
 import { PatilandiaSubscriptionsPlugin } from './plugins/patilandia-subscriptions/patilandia-subscriptions.plugin';
 import { PatilandiaWhatsappPlugin } from './plugins/patilandia-whatsapp/patilandia-whatsapp.plugin';
 import { PatilandiaProcurementPlugin } from './plugins/patilandia-procurement/patilandia-procurement.plugin';
+import { PatilandiaBoldPlugin } from './plugins/patilandia-bold/patilandia-bold.plugin';
 
 const IS_DEV = process.env.APP_ENV === 'dev';
 // PORT wins because hosting platforms inject it into the environment at runtime, and that
@@ -43,6 +44,15 @@ const storefrontUrl = process.env.STOREFRONT_URL ?? (IS_DEV ? 'http://localhost:
 if (!storefrontUrl) {
     throw new Error('STOREFRONT_URL must be set in production');
 }
+// Bold (pasarela de pago real, Colombia) — ambas llaves son de sandbox mientras se prueba la
+// integración. BOLD_SANDBOX controla cómo se firma el webhook (Bold usa un string vacío como
+// llave del HMAC en sandbox, no la llave secreta real — ver bold.service.ts).
+const boldIdentityKey = process.env.BOLD_IDENTITY_KEY;
+const boldSecretKey = process.env.BOLD_SECRET_KEY;
+if (!boldIdentityKey || !boldSecretKey) {
+    throw new Error('BOLD_IDENTITY_KEY y BOLD_SECRET_KEY deben estar configuradas');
+}
+const boldSandbox = process.env.BOLD_SANDBOX !== 'false';
 
 export const config: VendureConfig = {
     apiOptions: {
@@ -267,5 +277,11 @@ export const config: VendureConfig = {
         PatilandiaSubscriptionsPlugin.init({}),
         PatilandiaWhatsappPlugin.init({}),
         PatilandiaProcurementPlugin.init({}),
+        PatilandiaBoldPlugin.init({
+            identityKey: boldIdentityKey,
+            secretKey: boldSecretKey,
+            sandbox: boldSandbox,
+            storefrontUrl,
+        }),
     ],
 };

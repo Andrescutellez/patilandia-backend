@@ -38,6 +38,7 @@ import {
 } from '@vendure/core';
 
 import { CASH_ON_DELIVERY_PAYMENT_METHOD_CODE } from '../plugins/patilandia-loyalty/constants';
+import { BOLD_PAYMENT_METHOD_CODE } from '../plugins/patilandia-bold/constants';
 import { config } from '../vendure-config';
 
 const loggerCtx = 'ConfigureCheckout';
@@ -207,6 +208,30 @@ async function run() {
         // assignPaymentMethodsToChannel anyway threw `error.forbidden` — its permission check
         // apparently expects a real authenticated admin session, not a bare stand-alone-script
         // RequestContext — so it's skipped as both unnecessary and broken in this context.
+    }
+
+    // Bold's PaymentMethod, same as above: dummy-payment-handler is never actually invoked to
+    // create the Payment — OrderService.addManualPaymentToOrder does that once Bold confirms the
+    // charge (see patilandia-bold's BoldService). This entity only exists so "bold" has a real
+    // code/name to show in the Admin UI's order/payment views.
+    const boldExists = paymentMethods.some(method => method.code === BOLD_PAYMENT_METHOD_CODE);
+    if (!boldExists) {
+        await paymentMethodService.create(ctx, {
+            code: BOLD_PAYMENT_METHOD_CODE,
+            enabled: true,
+            handler: {
+                code: 'dummy-payment-handler',
+                arguments: [{ name: 'automaticSettle', value: 'false' }],
+            },
+            translations: [
+                {
+                    languageCode: LanguageCode.es,
+                    name: 'Bold',
+                    description: 'Tarjeta, PSE o Nequi a través de Bold.',
+                },
+            ],
+        });
+        Logger.info(`  ✔ Método de pago "${BOLD_PAYMENT_METHOD_CODE}" creado`, loggerCtx);
     }
 
     Logger.info('Checkout config listo.', loggerCtx);
