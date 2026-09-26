@@ -3,6 +3,7 @@ import {
     DefaultJobQueuePlugin,
     DefaultSchedulerPlugin,
     DefaultSearchPlugin,
+    LanguageCode,
     VendureConfig,
 } from '@vendure/core';
 import { defaultEmailHandlers, EmailPlugin, FileBasedTemplateLoader } from '@vendure/email-plugin';
@@ -127,29 +128,138 @@ export const config: VendureConfig = {
     // size/color -> real ProductVariants, everything else -> typed custom fields).
     customFields: {
         Product: [
-            { name: 'shortDescription', type: 'localeString' },
-            { name: 'materials', type: 'string', list: true },
-            { name: 'care', type: 'string', list: true },
+            {
+                name: 'shortDescription',
+                type: 'localeString',
+                label: [{ languageCode: LanguageCode.es, value: 'Descripción corta' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Frase corta que se muestra en las tarjetas de producto y en las páginas de categoría — distinta de la descripción larga de arriba.',
+                    },
+                ],
+            },
+            {
+                name: 'materials',
+                type: 'string',
+                list: true,
+                label: [{ languageCode: LanguageCode.es, value: 'Materiales' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Lista de materiales del producto (ej: "Microfibra premium", "Relleno siliconado") — se muestra en la página de producto.',
+                    },
+                ],
+            },
+            {
+                name: 'care',
+                type: 'string',
+                list: true,
+                label: [{ languageCode: LanguageCode.es, value: 'Cuidados' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Instrucciones de cuidado (ej: "Lavar a mano", "No usar blanqueador") — se muestra junto a los materiales.',
+                    },
+                ],
+            },
             {
                 name: 'highlights',
                 type: 'struct',
                 list: true,
+                label: [{ languageCode: LanguageCode.es, value: 'Características destacadas' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Tarjetas cortas con ícono + título + descripción que resaltan diferenciales del producto — se muestran en la página de producto.',
+                    },
+                ],
                 fields: [
-                    { name: 'title', type: 'string' },
-                    { name: 'description', type: 'string' },
-                    { name: 'icon', type: 'string' },
+                    {
+                        name: 'title',
+                        type: 'string',
+                        label: [{ languageCode: LanguageCode.es, value: 'Título' }],
+                    },
+                    {
+                        name: 'description',
+                        type: 'string',
+                        label: [{ languageCode: LanguageCode.es, value: 'Descripción' }],
+                    },
+                    {
+                        name: 'icon',
+                        type: 'string',
+                        label: [{ languageCode: LanguageCode.es, value: 'Ícono' }],
+                        description: [
+                            {
+                                languageCode: LanguageCode.es,
+                                value: 'Nombre del ícono a mostrar (ej: "shield", "crown", "truck") — ver los íconos disponibles en icons.tsx del storefront.',
+                            },
+                        ],
+                    },
                 ],
             },
-            { name: 'rating', type: 'float' },
-            { name: 'reviewCount', type: 'int' },
-            { name: 'badge', type: 'string' },
-            { name: 'featured', type: 'boolean', defaultValue: false },
+            {
+                name: 'rating',
+                type: 'float',
+                label: [{ languageCode: LanguageCode.es, value: 'Calificación promedio' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Se recalcula solo cuando se aprueba una reseña — normalmente no hace falta tocarlo a mano.',
+                    },
+                ],
+            },
+            {
+                name: 'reviewCount',
+                type: 'int',
+                label: [{ languageCode: LanguageCode.es, value: 'Cantidad de reseñas' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Se recalcula solo con las reseñas aprobadas — normalmente no hace falta tocarlo a mano.',
+                    },
+                ],
+            },
+            {
+                name: 'badge',
+                type: 'string',
+                label: [{ languageCode: LanguageCode.es, value: 'Etiqueta (badge)' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Texto corto sobre la imagen del producto (ej: "Más vendido", "Nuevo") — dejalo vacío si no querés ninguna.',
+                    },
+                ],
+            },
+            {
+                name: 'featured',
+                type: 'boolean',
+                defaultValue: false,
+                label: [{ languageCode: LanguageCode.es, value: 'Destacado' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Si está activado, el producto aparece en la sección "Destacados" del home.',
+                    },
+                ],
+            },
             // Admin-only toggle for patilandia-subscriptions — configurable per product, same
             // principle as personalization's per-product enable flag. No per-product frequency
             // config on purpose (the user explicitly didn't want that for this MVP): every
             // repurchasable product shares the same fixed frequency list (see
             // SUBSCRIPTION_FREQUENCIES_DAYS in that plugin's constants.ts).
-            { name: 'repurchaseEnabled', type: 'boolean', defaultValue: false },
+            {
+                name: 'repurchaseEnabled',
+                type: 'boolean',
+                defaultValue: false,
+                label: [{ languageCode: LanguageCode.es, value: 'Permitir suscripción / recompra' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Si está activado, el cliente puede programar recompras periódicas de este producto desde su cuenta.',
+                    },
+                ],
+            },
         ],
         ProductVariant: [
             { name: 'weightKg', type: 'float' },
