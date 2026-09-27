@@ -27,15 +27,6 @@
         padding: 0;
         margin: 0;
     }
-    tr.order-row td {
-        border-bottom: 1px dashed #e5e0ff;
-    }
-    tr.order-row td:last-child {
-        text-align: right;
-    }
-    tr.total-row {
-        font-weight: bold;
-    }
     .bg-off-white {
         background-color: #fafafa;
     }
@@ -93,37 +84,45 @@
         </mj-text>
         <mj-table cellpadding="8px">
             {{#each order.lines }}
-                <tr class="order-row">
-                    <td style="width: 56px;">
+                <tr>
+                    <td style="width: 56px; border-bottom: 1px dashed #e5e0ff;">
                         <img alt="{{ productVariant.name }}"
                              style="width: 48px; height: 48px; border-radius: 10px; object-fit: cover;"
                              src="{{ featuredAsset.preview }}?w=48&h=48" />
                     </td>
-                    <td>{{ quantity }} x {{ productVariant.name }}</td>
-                    <td>{{ formatMoney discountedLinePriceWithTax ../order.currencyCode 'es-CO' }}</td>
+                    <td style="border-bottom: 1px dashed #e5e0ff;">{{ quantity }} x {{ productVariant.name }}</td>
+                    <td style="border-bottom: 1px dashed #e5e0ff; text-align: right; white-space: nowrap;">{{ formatMoney discountedLinePriceWithTax ../order.currencyCode 'es-CO' }}</td>
                 </tr>
             {{/each}}
             {{#each order.discounts }}
-                <tr class="order-row">
-                    <td colspan="2">{{ description }}</td>
-                    <td>{{ formatMoney amount ../order.currencyCode 'es-CO' }}</td>
+                <tr>
+                    <td colspan="2" style="border-bottom: 1px dashed #e5e0ff;">{{ description }}</td>
+                    <td style="border-bottom: 1px dashed #e5e0ff; text-align: right; white-space: nowrap;">{{ formatMoney amount ../order.currencyCode 'es-CO' }}</td>
                 </tr>
             {{/each}}
-            <tr class="order-row">
-                <td colspan="2">Subtotal</td>
-                <td>{{ formatMoney order.subTotalWithTax order.currencyCode 'es-CO' }}</td>
+            <tr>
+                <td colspan="2" style="border-bottom: 1px dashed #e5e0ff;">Subtotal</td>
+                <td style="border-bottom: 1px dashed #e5e0ff; text-align: right; white-space: nowrap;">{{ formatMoney order.subTotalWithTax order.currencyCode 'es-CO' }}</td>
             </tr>
             {{#each shippingLines }}
-            <tr class="order-row">
-                <td colspan="2">Envío ({{ shippingMethod.name }})</td>
-                <td>{{ formatMoney priceWithTax ../order.currencyCode 'es-CO' }}</td>
+            <tr>
+                <td colspan="2" style="border-bottom: 1px dashed #e5e0ff;">Envío ({{ shippingMethod.name }})</td>
+                <td style="border-bottom: 1px dashed #e5e0ff; text-align: right; white-space: nowrap;">{{ formatMoney priceWithTax ../order.currencyCode 'es-CO' }}</td>
             </tr>
             {{/each}}
-            <tr class="order-row total-row">
-                <td colspan="2">Total</td>
-                <td>{{ formatMoney order.totalWithTax order.currencyCode 'es-CO' }}</td>
+            <tr>
+                <td colspan="2" style="font-weight: bold;">Total</td>
+                <td style="font-weight: bold; text-align: right; white-space: nowrap;">{{ formatMoney order.totalWithTax order.currencyCode 'es-CO' }}</td>
             </tr>
         </mj-table>
+    </mj-column>
+</mj-section>
+
+<mj-section padding="0 24px 32px 24px">
+    <mj-column>
+        <mj-button href="{{ storefrontUrl }}/pedido/{{ order.code }}">
+            Ver tu pedido
+        </mj-button>
     </mj-column>
 </mj-section>
 

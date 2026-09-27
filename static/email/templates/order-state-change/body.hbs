@@ -19,11 +19,9 @@
             </mj-text>
         {{/if}}
 
-        {{#unless isCancelled}}
-            <mj-button href="{{ storefrontUrl }}">
-                Volver a la tienda
-            </mj-button>
-        {{/unless}}
+        <mj-button href="{{ storefrontUrl }}/pedido/{{ order.code }}">
+            Ver tu pedido
+        </mj-button>
     </mj-column>
 </mj-section>
 
