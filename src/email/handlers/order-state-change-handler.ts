@@ -67,8 +67,12 @@ export const orderStateChangeHandler = new EmailEventListener('order-state-chang
     .loadData(async ({ event, injector }) => {
         const entityHydrator = injector.get(EntityHydrator);
         await entityHydrator.hydrate(event.ctx, event.order, { relations: ['fulfillments'] });
-        const trackingCode = event.order.fulfillments?.find(f => f.trackingCode)?.trackingCode ?? null;
-        return { trackingCode };
+        const fulfillment = event.order.fulfillments?.find(f => f.trackingCode);
+        return {
+            trackingCode: fulfillment?.trackingCode ?? null,
+            trackingMethod: fulfillment?.method || null,
+            trackingUrl: fulfillment?.customFields?.trackingUrl || null,
+        };
     })
     .setRecipient(event => event.order.customer!.emailAddress)
     .setFrom(SENDERS.pedidos)
@@ -79,6 +83,8 @@ export const orderStateChangeHandler = new EmailEventListener('order-state-chang
         heading: STATE_COPY[event.toState]?.heading ?? 'Tu pedido cambió de estado',
         message: STATE_COPY[event.toState]?.message ?? `Nuevo estado: ${event.toState}.`,
         trackingCode: event.data.trackingCode,
+        trackingMethod: event.data.trackingMethod,
+        trackingUrl: event.data.trackingUrl,
         isShipped: event.toState === 'Shipped' || event.toState === 'PartiallyShipped',
         isCancelled: event.toState === 'Cancelled',
     }));

@@ -13,6 +13,12 @@
             Pedido: <strong>#{{ order.code }}</strong>
         </mj-text>
 
+        {{#if trackingMethod}}
+            <mj-text font-size="13px" color="#5f6790">
+                Transportadora: <strong>{{ trackingMethod }}</strong>
+            </mj-text>
+        {{/if}}
+
         {{#if trackingCode}}
             <mj-text font-size="13px" color="#5f6790">
                 Número de guía: <strong>{{ trackingCode }}</strong>
@@ -22,6 +28,12 @@
         <mj-button href="{{ storefrontUrl }}/pedido/{{ order.code }}">
             Ver tu pedido
         </mj-button>
+
+        {{#if trackingUrl}}
+            <mj-button background-color="#ffffff" color="#7261ff" border="2px solid #7261ff" href="{{ trackingUrl }}">
+                Rastrear envío
+            </mj-button>
+        {{/if}}
     </mj-column>
 </mj-section>
 

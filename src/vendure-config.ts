@@ -42,6 +42,7 @@ import { reviewApprovedHandler } from './plugins/patilandia-reviews/email/review
 import { PatilandiaWhatsappPlugin } from './plugins/patilandia-whatsapp/patilandia-whatsapp.plugin';
 import { PatilandiaProcurementPlugin } from './plugins/patilandia-procurement/patilandia-procurement.plugin';
 import { PatilandiaBoldPlugin } from './plugins/patilandia-bold/patilandia-bold.plugin';
+import { patilandiaFulfillmentHandler } from './config/patilandia-fulfillment-handler';
 
 const IS_DEV = process.env.APP_ENV === 'dev';
 // PORT wins because hosting platforms inject it into the environment at runtime, and that
@@ -169,6 +170,11 @@ export const config: VendureConfig = {
     },
     paymentOptions: {
         paymentMethodHandlers: [dummyPaymentHandler],
+    },
+    // Replaces the default manualFulfillmentHandler with the same-code version that adds an
+    // optional trackingUrl arg — see patilandia-fulfillment-handler.ts.
+    shippingOptions: {
+        fulfillmentHandlers: [patilandiaFulfillmentHandler],
     },
     // Lets a line's price depend on its own customFields (e.g. a personalization surcharge) —
     // see patilandia-personalization/pricing/personalization-price-calculation-strategy.ts. The
@@ -383,6 +389,11 @@ export const config: VendureConfig = {
             { name: 'neighborhood', type: 'string', nullable: true },
             { name: 'deliveryNotes', type: 'text', nullable: true },
         ],
+        // Set by patilandia-fulfillment-handler.ts's createFulfillment() from the optional
+        // trackingUrl arg the admin fills in the Dashboard's "Fulfill order" dialog — never set
+        // directly by any mutation. Read by order-state-change-handler.ts and the storefront's
+        // "/pedido/[code]" page; both treat null/empty as "don't show a tracking link".
+        Fulfillment: [{ name: 'trackingUrl', type: 'string', nullable: true }],
     },
     plugins: [
         GraphiqlPlugin.init(),
