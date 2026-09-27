@@ -1,0 +1,39 @@
+{{> header title="Tu reseña ya está publicada" }}
+
+<mj-raw>
+    <style type="text/css">
+    .review-box {
+        background-color: #fafafa;
+        border-radius: 12px;
+        padding: 16px;
+    }
+    .stars {
+        color: #f3cb73;
+        font-size: 18px;
+    }
+    </style>
+</mj-raw>
+
+<mj-section background-color="#ffffff" padding="8px 24px 32px 24px">
+    <mj-column>
+        <mj-text>
+            <h3>¡Gracias por tu reseña, {{ authorName }}! ⭐</h3>
+        </mj-text>
+        <mj-text color="#5f6790">
+            Tu reseña de <strong>{{ productName }}</strong> ya está publicada y visible para otros
+            clientes.
+        </mj-text>
+
+        <mj-text css-class="review-box">
+            <span class="stars">{{ rating }} / 5 ⭐</span><br />
+            {{#if title}}<strong>{{ title }}</strong><br />{{/if}}
+            {{ body }}
+        </mj-text>
+
+        <mj-button href="{{ storefrontUrl }}">
+            Ver en la tienda
+        </mj-button>
+    </mj-column>
+</mj-section>
+
+{{> footer }}

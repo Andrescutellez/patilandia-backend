@@ -1,4 +1,4 @@
-{{> header title="Confirmación de tu pedido" }}
+{{> header title="Confirmación de tu regalo" }}
 
 <mj-raw>
     <style type="text/css">
@@ -39,17 +39,22 @@
     .bg-off-white {
         background-color: #fafafa;
     }
+    .gift-box {
+        background-color: #fff8e8;
+        border-radius: 12px;
+        padding: 16px;
+    }
     </style>
 </mj-raw>
 
 <mj-section css-class="bg-off-white" padding="8px 24px 24px 24px">
     <mj-column>
         <mj-text>
-            <h3>¡Gracias por tu compra, {{ order.customer.firstName }}! 🎉</h3>
+            <h3>🎁 ¡Tu regalo está confirmado, {{ order.customer.firstName }}!</h3>
         </mj-text>
         <mj-text color="#5f6790">
-            Ya confirmamos tu pago y tu pedido está en preparación. Te vamos a avisar por acá
-            apenas salga y cuando llegue.
+            Ya confirmamos el pago y estamos preparando tu regalo con cariño. Te avisamos por acá
+            apenas salga y cuando llegue a destino.
         </mj-text>
     </mj-column>
 </mj-section>
@@ -69,11 +74,31 @@
     </mj-column>
 </mj-section>
 
-<mj-section css-class="bg-off-white" padding="24px">
+<mj-section css-class="bg-off-white" padding="24px 24px 0 24px">
+    <mj-column>
+        <mj-text css-class="gift-box">
+            <strong>Detalles del regalo</strong><br /><br />
+            {{#if giftWrap}}✅ Va envuelto para regalo.<br />{{else}}Sin envoltorio especial.<br />{{/if}}
+            {{#unless giftAnonymous}}
+                {{#if giftSenderName}}De parte de: <strong>{{ giftSenderName }}</strong><br />{{/if}}
+            {{else}}
+                Este regalo se envía de forma anónima — el destinatario no va a ver quién lo mandó.<br />
+            {{/unless}}
+            {{#if giftMessage}}
+                <br /><em>"{{ giftMessage }}"</em>
+            {{/if}}
+        </mj-text>
+        <mj-text color="#b45309" font-size="13px" padding-top="12px">
+            ⚠️ Recuerda que el paquete se prepara sin incluir el precio a la vista, tal como pediste.
+        </mj-text>
+    </mj-column>
+</mj-section>
+
+<mj-section css-class="bg-off-white" padding="16px 24px 24px 24px">
     <mj-column>
         {{#with order.shippingAddress }}
             <mj-text>
-                <h3>Enviamos a: {{ fullName }}</h3>
+                <h3>Va para: {{ fullName }}</h3>
                 <ul class="address">
                     {{#if streetLine1}}<li>{{ streetLine1 }}</li>{{/if}}
                     {{#if streetLine2}}<li>{{ streetLine2 }}</li>{{/if}}
@@ -102,22 +127,6 @@
                     <td>{{ quantity }} x {{ productVariant.name }}</td>
                     <td>{{ formatMoney discountedLinePriceWithTax ../order.currencyCode 'es-CO' }}</td>
                 </tr>
-            {{/each}}
-            {{#each order.discounts }}
-                <tr class="order-row">
-                    <td colspan="2">{{ description }}</td>
-                    <td>{{ formatMoney amount ../order.currencyCode 'es-CO' }}</td>
-                </tr>
-            {{/each}}
-            <tr class="order-row">
-                <td colspan="2">Subtotal</td>
-                <td>{{ formatMoney order.subTotalWithTax order.currencyCode 'es-CO' }}</td>
-            </tr>
-            {{#each shippingLines }}
-            <tr class="order-row">
-                <td colspan="2">Envío ({{ shippingMethod.name }})</td>
-                <td>{{ formatMoney priceWithTax ../order.currencyCode 'es-CO' }}</td>
-            </tr>
             {{/each}}
             <tr class="order-row total-row">
                 <td colspan="2">Total</td>

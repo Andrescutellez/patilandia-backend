@@ -49,8 +49,59 @@ In development (`APP_ENV=dev`) any origin is allowed, so you do not need to set 
 
 Set the `STOREFRONT_URL` environment variable to the storefront's public origin (e.g.
 `https://patilandia.com.co`). It is used to build the links inside transactional emails — account
-verification, password reset, and the Patipuntos magic-link. In development it falls back to
-`http://localhost:3001`; in production the server refuses to start without it.
+verification, password reset, and the Patipuntos magic-link — and as the base URL for the Patilandia
+logo image shown in every email. In development it falls back to `http://localhost:3001`; in
+production the server refuses to start without it.
+
+### Email (transactional, via Purelymail SMTP)
+
+`EmailPlugin` sends real mail through [Purelymail](https://purelymail.com) SMTP once `SMTP_HOST` is
+set — this is checked independently of `APP_ENV`/`IS_DEV`, so a staging deployment that still runs
+with `APP_ENV=dev` (for other reasons) can still send real email. Leaving `SMTP_HOST` unset keeps
+the plugin in `devMode`: emails are written to disk and viewable at `/mailbox` instead of actually
+sent — this is what local development uses by default, with zero email setup required.
+
+**Env vars** (see `.env.example` for the full list with comments):
+
+| Var | Purpose |
+| --- | --- |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASSWORD` | Purelymail SMTP credentials. Port 465 is implicit TLS (`SMTP_SECURE=true`), not STARTTLS-on-587. |
+| `EMAIL_FROM_NAME` | Display name used for every sender identity (e.g. `Patilandia`). |
+| `EMAIL_FROM_ADDRESS` | Fallback/"principal" sender for anything not covered by the categories below. |
+| `EMAIL_REPLY_TO` | Where a customer's reply actually lands. |
+| `EMAIL_ADDRESS_PEDIDOS` / `_VENTAS` / `_SOPORTE` / `_HOLA` / `_CONTACTO` | Purelymail aliases (all deliver to the same real mailboxes) — see `src/email/senders.ts` for which email type uses which. |
+
+**Sender routing** (`src/email/senders.ts`, applied in `src/email/native-handlers.ts` and each
+custom handler): order confirmation, gift-order confirmation and order-state-change emails send
+from `pedidos@`; password reset and email-address change from `soporte@`; account verification,
+Patipuntos and subscription reminders from `hola@`. `ventas@`/`contacto@` are validated and ready
+but not used by any handler yet.
+
+**Templates** live in `static/email/templates/`, one folder per handler id, each a `body.hbs` file
+(MJML + Handlebars) wrapped by the shared `partials/header.hbs` / `partials/footer.hbs` (Patilandia
+branding — logo, colors, footer). Current handlers/templates:
+
+| Template folder | Fires on | Sender |
+| --- | --- | --- |
+| `email-verification` | New account registered | hola@ |
+| `password-reset` | Password reset requested | soporte@ |
+| `email-address-change` | Email change requested | soporte@ |
+| `order-confirmation` | Order reaches `PaymentSettled` (non-gift) | pedidos@ |
+| `gift-order-confirmation` | Order reaches `PaymentSettled` (gift, see patilandia-gifts) | pedidos@ |
+| `order-state-change` | Order reaches `PartiallyShipped`/`Shipped`/`PartiallyDelivered`/`Delivered`/`Cancelled` | pedidos@ |
+| `loyalty-email-verification` | Patipuntos magic-link requested | hola@ |
+| `subscription-reminder` | Recompra reminder due (daily scheduled task) | hola@ |
+
+**Testing a real send** (once `SMTP_HOST` etc. are set):
+
+1. `npm run dev:server` — check the log for `Nest application successfully started` with no SMTP
+   errors. A connection/auth error surfaces here or on the first send attempt, not at import time.
+2. Trigger any of the events above against the real server (e.g. register a customer via the Shop
+   API, or place a real order through the storefront) and check the destination mailbox.
+3. Open the received email's raw source ("view original" in Gmail/Outlook) and confirm `SPF: PASS`,
+   `DKIM: PASS`, `DMARC: PASS`, and that `From` is the expected `@patilandia.com.co` address.
+4. `SMTP_PASSWORD` is never logged — a missing/wrong credential surfaces as a generic SMTP auth
+   error in the log, never the password itself.
 
 ### Running directly
 

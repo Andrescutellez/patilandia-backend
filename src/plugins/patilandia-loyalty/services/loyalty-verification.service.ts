@@ -47,7 +47,7 @@ export class LoyaltyVerificationService {
         if (mostRecent) {
             const secondsSinceRequested = (Date.now() - mostRecent.createdAt.getTime()) / 1000;
             if (secondsSinceRequested < LOYALTY_VERIFICATION_RESEND_COOLDOWN_SECONDS) {
-                throw new UserInputError('Ya te enviamos un correo hace un momento — revisá tu bandeja antes de pedir otro.');
+                throw new UserInputError('Ya te enviamos un correo hace un momento — revisa tu bandeja antes de pedir otro.');
             }
         }
 
@@ -71,7 +71,7 @@ export class LoyaltyVerificationService {
             relations: ['account'],
         });
         if (!tokenEntity || tokenEntity.consumedAt || tokenEntity.expiresAt.getTime() < Date.now()) {
-            throw new UserInputError('El enlace de verificación no es válido o ya venció — pedí uno nuevo.');
+            throw new UserInputError('El enlace de verificación no es válido o ya venció — pide uno nuevo.');
         }
 
         tokenEntity.consumedAt = new Date();

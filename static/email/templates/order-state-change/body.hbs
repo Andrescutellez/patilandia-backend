@@ -1,0 +1,30 @@
+{{> header title=heading }}
+
+<mj-section background-color="#ffffff" padding="8px 24px 32px 24px">
+    <mj-column>
+        <mj-text>
+            <h3>{{ heading }}</h3>
+        </mj-text>
+        <mj-text color="#5f6790">
+            {{ message }}
+        </mj-text>
+
+        <mj-text font-size="13px" color="#5f6790" padding-top="8px">
+            Pedido: <strong>#{{ order.code }}</strong>
+        </mj-text>
+
+        {{#if trackingCode}}
+            <mj-text font-size="13px" color="#5f6790">
+                Número de guía: <strong>{{ trackingCode }}</strong>
+            </mj-text>
+        {{/if}}
+
+        {{#unless isCancelled}}
+            <mj-button href="{{ storefrontUrl }}">
+                Volver a la tienda
+            </mj-button>
+        {{/unless}}
+    </mj-column>
+</mj-section>
+
+{{> footer }}

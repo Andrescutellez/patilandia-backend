@@ -1,20 +1,24 @@
-{{> header title="Verify Your New Email Address" }}
+{{> header title="Confirma tu nuevo correo" }}
 
-<mj-section background-color="#fafafa">
+<mj-section background-color="#ffffff" padding="8px 24px 32px 24px">
     <mj-column>
-        <mj-text color="#525252">
-            We received a request to change your registered email address to this one.
-            Click the button below to verify this address and complete the process:
+        <mj-text>
+            <h3>Cambio de correo en tu cuenta</h3>
+        </mj-text>
+        <mj-text color="#5f6790">
+            Recibimos una solicitud para cambiar el correo de tu cuenta de Patilandia a esta
+            dirección. Confírmalo para completar el cambio.
         </mj-text>
 
-        <mj-button font-family="Helvetica"
-                   background-color="#f45e43"
-                   color="white"
-                   href="{{ changeEmailAddressUrl }}?token={{ identifierChangeToken }}">
-            Verify Me!
+        <mj-button href="{{ changeEmailAddressUrl }}?token={{ identifierChangeToken }}">
+            Confirmar nuevo correo
         </mj-button>
+
+        <mj-text color="#5f6790" font-size="13px">
+            Si no pediste este cambio, puedes ignorar este correo — tu correo actual sigue siendo
+            el mismo.
+        </mj-text>
     </mj-column>
 </mj-section>
-
 
 {{> footer }}

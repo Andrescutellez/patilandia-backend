@@ -4,6 +4,7 @@ import {
     Address,
     Customer,
     CustomerService,
+    EventBus,
     ProductVariant,
     RequestContext,
     TransactionalConnection,
@@ -14,6 +15,7 @@ import { IsNull, LessThanOrEqual } from 'typeorm';
 
 import { SUBSCRIPTION_FREQUENCIES_DAYS } from '../constants';
 import { ProductSubscription } from '../entities/product-subscription.entity';
+import { SubscriptionCreatedEvent } from '../events/subscription-created-event';
 
 export interface NewSubscriptionAddressInput {
     fullName: string;
@@ -57,6 +59,7 @@ export class SubscriptionService {
         private connection: TransactionalConnection,
         private customerService: CustomerService,
         private translator: TranslatorService,
+        private eventBus: EventBus,
     ) {}
 
     /**
@@ -69,7 +72,7 @@ export class SubscriptionService {
      */
     private async resolveOwnerCustomer(ctx: RequestContext): Promise<Customer> {
         if (!ctx.activeUserId) {
-            throw new UserInputError('Necesitás iniciar sesión para crear una recompra programada');
+            throw new UserInputError('Necesitas iniciar sesión para crear una recompra programada');
         }
         const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
         if (!customer) {
@@ -170,7 +173,9 @@ export class SubscriptionService {
             nextRenewalDate,
             reminderSentAt: null,
         });
-        return this.connection.getRepository(ctx, ProductSubscription).save(subscription);
+        const saved = await this.connection.getRepository(ctx, ProductSubscription).save(subscription);
+        void this.eventBus.publish(new SubscriptionCreatedEvent(ctx, saved));
+        return saved;
     }
 
     async findMine(ctx: RequestContext): Promise<ProductSubscription[]> {

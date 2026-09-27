@@ -1,20 +1,23 @@
-{{> header title="Verify Your Email Address" }}
+{{> header title="Confirma tu cuenta de Patilandia" }}
 
-<mj-section background-color="#fafafa">
+<mj-section background-color="#ffffff" padding="8px 24px 32px 24px">
     <mj-column>
-        <mj-text color="#525252">
-            Thank you for creating an account. Click the button below to verify this email address and
-            complete the registration process:
+        <mj-text>
+            <h3>¡Bienvenido/a a Patilandia! 🐾</h3>
+        </mj-text>
+        <mj-text color="#5f6790">
+            Gracias por crear tu cuenta. Confirma tu correo para terminar el registro y empezar a
+            comprar todo lo que tu mascota necesita.
         </mj-text>
 
-        <mj-button font-family="Helvetica"
-                   background-color="#f45e43"
-                   color="white"
-                   href="{{ verifyEmailAddressUrl }}?token={{ verificationToken }}">
-            Verify Me!
+        <mj-button href="{{ verifyEmailAddressUrl }}?token={{ verificationToken }}">
+            Confirmar mi correo
         </mj-button>
+
+        <mj-text color="#5f6790" font-size="13px">
+            Si tú no creaste esta cuenta, puedes ignorar este correo tranquilamente.
+        </mj-text>
     </mj-column>
 </mj-section>
-
 
 {{> footer }}

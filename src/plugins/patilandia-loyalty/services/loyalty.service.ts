@@ -3,6 +3,7 @@ import { ID } from '@vendure/common/lib/shared-types';
 import {
     Customer,
     CustomerService,
+    EventBus,
     Order,
     OrderService,
     RequestContext,
@@ -17,6 +18,7 @@ import { LoyaltyAccount } from '../entities/loyalty-account.entity';
 import { LoyaltyRule } from '../entities/loyalty-rule.entity';
 import { LoyaltySettings } from '../entities/loyalty-settings.entity';
 import { LoyaltyTransaction, LoyaltyTransactionType } from '../entities/loyalty-transaction.entity';
+import { LoyaltyPointsEarnedEvent } from '../events/loyalty-points-earned-event';
 
 import { LoyaltyEligibilityService } from './loyalty-eligibility.service';
 
@@ -67,6 +69,7 @@ export class LoyaltyService {
         private customerService: CustomerService,
         private orderService: OrderService,
         private eligibilityService: LoyaltyEligibilityService,
+        private eventBus: EventBus,
     ) {}
 
     // ---------------------------------------------------------------------------------------
@@ -237,7 +240,7 @@ export class LoyaltyService {
         const points = Math.floor(basePoints * multiplier);
         if (points <= 0) return null;
 
-        return this.insertLedgerEntry(ctx, {
+        const transaction = await this.insertLedgerEntry(ctx, {
             account,
             amount: points,
             type: 'EARN',
@@ -257,6 +260,17 @@ export class LoyaltyService {
                 },
             },
         });
+        // insertLedgerEntry's own idempotency already guarantees the BALANCE is never double
+        // credited (a duplicate-key replay returns the existing row without touching it again) —
+        // that's the property that actually matters. In the rare case a caller's event bus
+        // redelivers the same award (e.g. PaymentAuthorized firing twice for one order), this can
+        // publish a second notification for what the ledger correctly treated as a no-op; that's a
+        // harmless, low-stakes edge case not worth threading a "was this fresh" flag through
+        // insertLedgerEntry's already-careful transaction/locking logic to prevent.
+        if (transaction) {
+            void this.eventBus.publish(new LoyaltyPointsEarnedEvent(ctx, account, transaction));
+        }
+        return transaction;
     }
 
     /** Increments the "at least one real purchase" eligibility counter — called once per order
@@ -308,7 +322,7 @@ export class LoyaltyService {
         const account = await this.getOrCreateAccountForCustomer(ctx, customer);
         const eligibility = await this.eligibilityService.check(ctx, account);
         if (!eligibility.eligible) {
-            throw new UserInputError(`No podés canjear todavía: ${eligibility.failedChecks.join(', ')}`);
+            throw new UserInputError(`No puedes canjear todavía: ${eligibility.failedChecks.join(', ')}`);
         }
 
         const settings = await this.getSettings(ctx);
@@ -635,7 +649,7 @@ export class LoyaltyService {
         }
         const existing = await this.connection.getRepository(ctx, Customer).findOne({ where: { emailAddress: clientEmail } });
         if (existing?.user) {
-            throw new UserInputError('Ya existe una cuenta con este correo — iniciá sesión para continuar');
+            throw new UserInputError('Ya existe una cuenta con este correo — inicia sesión para continuar');
         }
         return this.getOrCreateCustomer(ctx, clientEmail);
     }

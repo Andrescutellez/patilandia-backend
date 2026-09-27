@@ -1,24 +1,22 @@
-{{> header title="Forgotten password reset" }}
+{{> header title="Restablece tu contraseña" }}
 
-<mj-section background-color="#fafafa">
+<mj-section background-color="#ffffff" padding="8px 24px 32px 24px">
     <mj-column>
-        <mj-text color="#525252">
-            Someone requested a new password for your account.
+        <mj-text>
+            <h3>¿Olvidaste tu contraseña?</h3>
+        </mj-text>
+        <mj-text color="#5f6790">
+            Alguien (probablemente tú) pidió restablecer la contraseña de tu cuenta de Patilandia.
         </mj-text>
 
-        <mj-button font-family="Helvetica"
-                   background-color="#f45e43"
-                   color="white"
-                   href="{{ passwordResetUrl }}?token={{ passwordResetToken }}">
-            Reset password
+        <mj-button href="{{ passwordResetUrl }}?token={{ passwordResetToken }}">
+            Elegir nueva contraseña
         </mj-button>
 
-        <mj-text color="#525252">
-        If you didn't make this request then you can safely ignore this email - nothing has been changed on your account.
+        <mj-text color="#5f6790" font-size="13px">
+            Si no pediste esto, puedes ignorar este correo — tu cuenta sigue igual, no se cambió nada.
         </mj-text>
-
     </mj-column>
 </mj-section>
-
 
 {{> footer }}

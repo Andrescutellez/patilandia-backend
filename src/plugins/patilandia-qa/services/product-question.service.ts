@@ -1,6 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { ID, PaginatedList } from '@vendure/common/lib/shared-types';
 import {
+    EventBus,
     ListQueryBuilder,
     ListQueryOptions,
     Product,
@@ -12,6 +13,7 @@ import {
 
 import { ProductQuestion } from '../entities/product-question.entity';
 import { PATILANDIA_QA_PLUGIN_OPTIONS } from '../constants';
+import { ProductQuestionAnsweredEvent } from '../events/product-question-answered-event';
 import { PluginInitOptions } from '../types';
 
 export interface SubmitProductQuestionInput {
@@ -31,6 +33,7 @@ export class ProductQuestionService {
     constructor(
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
+        private eventBus: EventBus,
         @Inject(PATILANDIA_QA_PLUGIN_OPTIONS) private options: PluginInitOptions,
     ) {}
 
@@ -100,7 +103,9 @@ export class ProductQuestionService {
         question.answer = answer.trim();
         question.answeredAt = new Date();
         question.approved = true;
-        return this.connection.getRepository(ctx, ProductQuestion).save(question);
+        const saved = await this.connection.getRepository(ctx, ProductQuestion).save(question);
+        void this.eventBus.publish(new ProductQuestionAnsweredEvent(ctx, saved));
+        return saved;
     }
 
     /** Admin API — pull a published question back down (spam, indebida, ya no aplica). Keeps

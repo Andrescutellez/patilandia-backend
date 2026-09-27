@@ -32,6 +32,9 @@ export const petBirthdayBonusTask = new ScheduledTask({
                 referenceType: 'PetProfile',
                 referenceId: String(pet.id),
                 idempotencyKey: `earn:pet:${pet.id}:PET_BIRTHDAY:${year}`,
+                // Lets the points-earned email say "por el cumpleaños de Firulais" instead of a
+                // generic message — see loyalty-points-earned-handler.ts.
+                metadata: { petName: pet.name },
             });
             if (result) awarded++;
         }

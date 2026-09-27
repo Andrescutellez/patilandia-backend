@@ -1,0 +1,21 @@
+{{> header title="¡Mascota registrada!" }}
+
+<mj-section background-color="#ffffff" padding="8px 24px 32px 24px">
+    <mj-column>
+        <mj-text>
+            <h3>¡{{ petName }} ya es parte de Patilandia! 🐾</h3>
+        </mj-text>
+        <mj-text color="#5f6790">
+            Hola {{ ownerName }}, registramos a <strong>{{ petName }}</strong>
+            {{#if breed}}({{ breed }}, {{ species }}){{else}}({{ species }}){{/if}}
+            en tu cuenta. Ahora vas a poder llevar su perfil, recibir recomendaciones y sumar
+            Patipuntos por su cumpleaños. 🎂
+        </mj-text>
+
+        <mj-button href="{{ storefrontUrl }}/cuenta/mascotas">
+            Ver el perfil de {{ petName }}
+        </mj-button>
+    </mj-column>
+</mj-section>
+
+{{> footer }}

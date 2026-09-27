@@ -209,7 +209,7 @@ export class PetProfileService {
         }
         const existing = await this.findCustomerByEmail(ctx, clientEmail);
         if (existing?.user) {
-            throw new UserInputError('Ya existe una cuenta con este correo — iniciá sesión para continuar');
+            throw new UserInputError('Ya existe una cuenta con este correo — inicia sesión para continuar');
         }
         const customer = await this.customerService.createOrUpdate(ctx, {
             emailAddress: clientEmail,

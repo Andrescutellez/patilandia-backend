@@ -41,12 +41,12 @@ export class LoyaltyEligibilityService {
         return [
             {
                 code: 'emailVerified',
-                label: 'Verificá tu correo',
+                label: 'Verifica tu correo',
                 passed: account.emailVerifiedAt !== null || nativelyVerified,
             },
             {
                 code: 'hasCompletedPurchase',
-                label: 'Hacé tu primera compra',
+                label: 'Haz tu primera compra',
                 passed: account.completedOrderCount >= 1,
             },
         ];

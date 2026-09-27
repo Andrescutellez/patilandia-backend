@@ -1,0 +1,22 @@
+{{> header title="¡Ganaste Patipuntos!" }}
+
+<mj-section background-color="#ffffff" padding="8px 24px 32px 24px">
+    <mj-column>
+        <mj-text>
+            <h3>¡Ganaste {{ points }} Patipuntos! 🐾</h3>
+        </mj-text>
+        <mj-text color="#5f6790">
+            Hola {{ firstName }}, sumaste <strong>{{ points }} puntos</strong> {{ reason }}.
+        </mj-text>
+        <mj-text color="#5f6790">
+            Tu saldo actual es de <strong>{{ balance }} Patipuntos</strong>, que puedes canjear por
+            descuento en tu próxima compra.
+        </mj-text>
+
+        <mj-button href="{{ storefrontUrl }}/cuenta/patipuntos">
+            Ver mis Patipuntos
+        </mj-button>
+    </mj-column>
+</mj-section>
+
+{{> footer }}

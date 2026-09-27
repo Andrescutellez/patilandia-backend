@@ -1,0 +1,24 @@
+{{> header title="Suscripción activada" }}
+
+<mj-section background-color="#ffffff" padding="8px 24px 32px 24px">
+    <mj-column>
+        <mj-text>
+            <h3>¡Tu suscripción está activa! 🐾</h3>
+        </mj-text>
+        <mj-text color="#5f6790">
+            Hola {{ firstName }}, programamos la recompra de
+            <strong>{{ quantity }} x {{ productName }}</strong> cada {{ frequencyDays }} días.
+        </mj-text>
+        <mj-text color="#5f6790">
+            Próximo recordatorio: <strong>{{ formatDate nextRenewalDate "dd/mm/yyyy" }}</strong>.
+            Nunca te cobramos nada automáticamente — ese día te mandamos un correo para que
+            confirmes la compra tú mismo/a.
+        </mj-text>
+
+        <mj-button href="{{ storefrontUrl }}/cuenta/suscripciones">
+            Ver mis suscripciones
+        </mj-button>
+    </mj-column>
+</mj-section>
+
+{{> footer }}

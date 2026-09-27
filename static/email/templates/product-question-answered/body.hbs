@@ -1,0 +1,36 @@
+{{> header title="Respondimos tu pregunta" }}
+
+<mj-raw>
+    <style type="text/css">
+    .qa-box {
+        background-color: #fafafa;
+        border-radius: 12px;
+        padding: 16px;
+    }
+    </style>
+</mj-raw>
+
+<mj-section background-color="#ffffff" padding="8px 24px 32px 24px">
+    <mj-column>
+        <mj-text>
+            <h3>Ya respondimos tu pregunta sobre {{ productName }} 💬</h3>
+        </mj-text>
+        <mj-text color="#5f6790">
+            Hola {{ authorName }}, esto fue lo que preguntaste y nuestra respuesta:
+        </mj-text>
+
+        <mj-text css-class="qa-box">
+            <strong>Tu pregunta:</strong><br />
+            {{ question }}
+            <br /><br />
+            <strong>Nuestra respuesta:</strong><br />
+            {{ answer }}
+        </mj-text>
+
+        <mj-button href="{{ storefrontUrl }}">
+            Ver en la tienda
+        </mj-button>
+    </mj-column>
+</mj-section>
+
+{{> footer }}

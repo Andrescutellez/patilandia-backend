@@ -6,24 +6,39 @@ import {
     LanguageCode,
     VendureConfig,
 } from '@vendure/core';
-import { defaultEmailHandlers, EmailPlugin, FileBasedTemplateLoader } from '@vendure/email-plugin';
+import { EmailPlugin, FileBasedTemplateLoader } from '@vendure/email-plugin';
+import type { EmailPluginOptions, EmailPluginDevModeOptions } from '@vendure/email-plugin';
 import { AssetServerPlugin, defaultAssetStorageStrategyFactory } from '@vendure/asset-server-plugin';
 import { DashboardPlugin } from '@vendure/dashboard/plugin';
 import { GraphiqlPlugin } from '@vendure/graphiql-plugin';
 import 'dotenv/config';
 import path from 'path';
+import {
+    emailAddressChangeHandler,
+    emailVerificationHandler,
+    orderConfirmationHandler,
+    passwordResetHandler,
+} from './email/native-handlers';
+import { giftOrderConfirmationHandler } from './email/handlers/gift-order-confirmation-handler';
+import { orderStateChangeHandler } from './email/handlers/order-state-change-handler';
+import { EMAIL_ASSET_BASE_URL } from './email/senders';
 import { PatilandiaAdminPlugin } from './plugins/patilandia-admin/patilandia-admin.plugin';
 import { PatilandiaReviewsPlugin } from './plugins/patilandia-reviews/patilandia-reviews.plugin';
 import { PatilandiaPetsPlugin } from './plugins/patilandia-pets/patilandia-pets.plugin';
 import { PatilandiaQaPlugin } from './plugins/patilandia-qa/patilandia-qa.plugin';
 import { PatilandiaWishlistPlugin } from './plugins/patilandia-wishlist/patilandia-wishlist.plugin';
 import { loyaltyVerificationHandler } from './plugins/patilandia-loyalty/email/loyalty-verification-handler';
+import { loyaltyPointsEarnedHandler } from './plugins/patilandia-loyalty/email/loyalty-points-earned-handler';
 import { PatilandiaLoyaltyPlugin } from './plugins/patilandia-loyalty/patilandia-loyalty.plugin';
 import { PersonalizationPriceCalculationStrategy } from './plugins/patilandia-personalization/pricing/personalization-price-calculation-strategy';
 import { PatilandiaPersonalizationPlugin } from './plugins/patilandia-personalization/patilandia-personalization.plugin';
 import { PatilandiaGiftsPlugin } from './plugins/patilandia-gifts/patilandia-gifts.plugin';
 import { subscriptionReminderHandler } from './plugins/patilandia-subscriptions/email/subscription-reminder-handler';
+import { subscriptionCreatedHandler } from './plugins/patilandia-subscriptions/email/subscription-created-handler';
 import { PatilandiaSubscriptionsPlugin } from './plugins/patilandia-subscriptions/patilandia-subscriptions.plugin';
+import { petRegisteredHandler } from './plugins/patilandia-pets/email/pet-registered-handler';
+import { productQuestionAnsweredHandler } from './plugins/patilandia-qa/email/product-question-answered-handler';
+import { reviewApprovedHandler } from './plugins/patilandia-reviews/email/review-approved-handler';
 import { PatilandiaWhatsappPlugin } from './plugins/patilandia-whatsapp/patilandia-whatsapp.plugin';
 import { PatilandiaProcurementPlugin } from './plugins/patilandia-procurement/patilandia-procurement.plugin';
 import { PatilandiaBoldPlugin } from './plugins/patilandia-bold/patilandia-bold.plugin';
@@ -54,6 +69,54 @@ if (!boldIdentityKey || !boldSecretKey) {
     throw new Error('BOLD_IDENTITY_KEY y BOLD_SECRET_KEY deben estar configuradas');
 }
 const boldSandbox = process.env.BOLD_SANDBOX !== 'false';
+// Real SMTP (Purelymail) is opt-in via SMTP_HOST's presence, deliberately NOT tied to IS_DEV — the
+// staging VPS still runs with APP_ENV=dev (its production-hardening flag, unrelated to email) and
+// still needs to send real mail. Without SMTP_HOST, EmailPlugin falls back to devMode (writes to
+// disk, served at /mailbox) so `npm run dev:server` keeps working with zero email setup.
+const smtpHost = process.env.SMTP_HOST;
+const smtpPort = smtpHost ? Number(process.env.SMTP_PORT) : undefined;
+const smtpUser = process.env.SMTP_USER;
+const smtpPassword = process.env.SMTP_PASSWORD;
+// Purelymail's port 465 is implicit TLS (secure:true), not STARTTLS-on-587 — defaults to true like
+// BOLD_SANDBOX's `!== 'false'` pattern, so it only needs setting explicitly to opt OUT.
+const smtpSecure = process.env.SMTP_SECURE !== 'false';
+if (smtpHost && (!smtpPort || !smtpUser || !smtpPassword)) {
+    // Never interpolate smtpPassword itself into this message — only ever report which vars are
+    // missing, never their values.
+    throw new Error('SMTP_HOST está configurado: SMTP_PORT, SMTP_USER y SMTP_PASSWORD también deben estarlo');
+}
+// One list shared by both the real-SMTP and devMode branches below, so every handler always
+// applies regardless of which transport is active. Order confirmation and gift confirmation are
+// mutually exclusive per order (see native-handlers.ts's filter on orderConfirmationHandler).
+const emailHandlers = [
+    orderConfirmationHandler,
+    giftOrderConfirmationHandler,
+    orderStateChangeHandler,
+    emailVerificationHandler,
+    passwordResetHandler,
+    emailAddressChangeHandler,
+    loyaltyVerificationHandler,
+    subscriptionReminderHandler,
+    loyaltyPointsEarnedHandler,
+    petRegisteredHandler,
+    productQuestionAnsweredHandler,
+    subscriptionCreatedHandler,
+    reviewApprovedHandler,
+];
+const emailGlobalTemplateVars = {
+    verifyEmailAddressUrl: `${storefrontUrl}/cuenta/verificar`,
+    passwordResetUrl: `${storefrontUrl}/cuenta/restablecer-contrasena`,
+    // No storefront page exists for this yet — email-change UI is out of scope for the initial
+    // real-accounts rollout. The link is correct, just leads nowhere until that page is built.
+    changeEmailAddressUrl: `${storefrontUrl}/cuenta/verificar-cambio-correo`,
+    // Patipuntos' own magic-link email verification (not the native flow above, which requires a
+    // real password-based User account) — points at the real storefront.
+    patipuntosVerifyUrl: `${storefrontUrl}/patipuntos/verificar`,
+    // patilandia-subscriptions' daily reminder email links here — see subscription-reminder-handler.ts.
+    suscripcionesUrl: `${storefrontUrl}/cuenta/suscripciones`,
+    storefrontUrl,
+    emailAssetBaseUrl: EMAIL_ASSET_BASE_URL,
+};
 
 export const config: VendureConfig = {
     apiOptions: {
@@ -348,28 +411,29 @@ export const config: VendureConfig = {
         DefaultSchedulerPlugin.init(),
         DefaultJobQueuePlugin.init({ useDatabaseForBuffer: true }),
         DefaultSearchPlugin.init({ bufferUpdates: false, indexStockStatus: true }),
-        EmailPlugin.init({
-            devMode: true,
-            outputPath: path.join(__dirname, '../static/email/test-emails'),
-            route: 'mailbox',
-            handlers: [...defaultEmailHandlers, loyaltyVerificationHandler, subscriptionReminderHandler],
-            templateLoader: new FileBasedTemplateLoader(path.join(__dirname, '../static/email/templates')),
-            globalTemplateVars: {
-                fromAddress: '"example" <noreply@example.com>',
-                verifyEmailAddressUrl: `${storefrontUrl}/cuenta/verificar`,
-                passwordResetUrl: `${storefrontUrl}/cuenta/restablecer-contrasena`,
-                // No storefront page exists for this yet — email-change UI is out of scope for
-                // the initial real-accounts rollout. The link is correct, just leads nowhere until
-                // that page is built.
-                changeEmailAddressUrl: `${storefrontUrl}/cuenta/verificar-cambio-correo`,
-                // Patipuntos' own magic-link email verification (not the native flow above, which
-                // requires a real password-based User account) — points at the real storefront.
-                patipuntosVerifyUrl: `${storefrontUrl}/patipuntos/verificar`,
-                // patilandia-subscriptions' daily reminder email links here — see
-                // subscription-reminder-handler.ts.
-                suscripcionesUrl: `${storefrontUrl}/cuenta/suscripciones`
-            },
-        }),
+        EmailPlugin.init(
+            (smtpHost
+                ? {
+                      transport: {
+                          type: 'smtp',
+                          host: smtpHost,
+                          port: smtpPort,
+                          secure: smtpSecure,
+                          auth: { user: smtpUser, pass: smtpPassword },
+                      },
+                      handlers: emailHandlers,
+                      templateLoader: new FileBasedTemplateLoader(path.join(__dirname, '../static/email/templates')),
+                      globalTemplateVars: emailGlobalTemplateVars,
+                  }
+                : {
+                      devMode: true,
+                      outputPath: path.join(__dirname, '../static/email/test-emails'),
+                      route: 'mailbox',
+                      handlers: emailHandlers,
+                      templateLoader: new FileBasedTemplateLoader(path.join(__dirname, '../static/email/templates')),
+                      globalTemplateVars: emailGlobalTemplateVars,
+                  }) satisfies EmailPluginOptions | EmailPluginDevModeOptions,
+        ),
         DashboardPlugin.init({
             route: 'dashboard',
             appDir: IS_DEV

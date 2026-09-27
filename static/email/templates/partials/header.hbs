@@ -1,18 +1,36 @@
 <mjml>
     <mj-head>
         <mj-title>{{ title }}</mj-title>
+        <mj-attributes>
+            <mj-all font-family="Helvetica, Arial, sans-serif" />
+            <mj-text color="#22305f" font-size="15px" line-height="24px" />
+            <mj-button
+                background-color="#7261ff"
+                color="#ffffff"
+                font-weight="700"
+                border-radius="999px"
+                padding="16px 0"
+                inner-padding="14px 28px"
+            />
+        </mj-attributes>
         <mj-style inline="inline">
             h3 {
                 font-size: 18px;
-                color: #555;
-                font-weight: normal;
+                color: #22305f;
+                font-weight: 700;
+                margin: 0 0 8px 0;
             }
         </mj-style>
     </mj-head>
 
-    <mj-body>
-        <mj-section background-color="#f0f0f0">
+    <mj-body background-color="#f5f4ff">
+        <mj-section background-color="#ffffff" padding="28px 24px 16px 24px">
             <mj-column>
-                <mj-text>[company header]</mj-text>
+                <mj-image
+                    width="170px"
+                    src="{{ emailAssetBaseUrl }}/images/patilandia/logo-rectangular.png"
+                    alt="Patilandia"
+                    align="left"
+                />
             </mj-column>
         </mj-section>

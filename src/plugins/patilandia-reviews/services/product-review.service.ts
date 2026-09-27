@@ -98,13 +98,13 @@ export class ProductReviewService {
         const customer = await this.resolveReviewerCustomer(ctx, input.authorEmail.trim());
         if (!customer) {
             throw new UserInputError(
-                'Necesitás haber comprado este producto para reseñarlo. Si ya lo compraste, iniciá sesión o usá el mismo correo de tu pedido.',
+                'Necesitas haber comprado este producto para reseñarlo. Si ya lo compraste, inicia sesión o usa el mismo correo de tu pedido.',
             );
         }
 
         const verifiedPurchase = await this.hasVerifiedPurchase(ctx, customer.id, product.id);
         if (!verifiedPurchase) {
-            throw new UserInputError('Solo podés reseñar productos que hayas comprado.');
+            throw new UserInputError('Solo puedes reseñar productos que hayas comprado.');
         }
 
         const existing = await this.connection.getRepository(ctx, ProductReview).findOne({
