@@ -78,11 +78,79 @@ export class MipaqueteService {
 
     async updateSettings(
         ctx: RequestContext,
-        input: Partial<Pick<MipaqueteSettings, 'bogotaOwnShippingEnabled' | 'bogotaOwnShippingCostMinorUnits'>>,
+        input: Partial<
+            Pick<
+                MipaqueteSettings,
+                | 'bogotaOwnShippingEnabled'
+                | 'bogotaOwnShippingCostMinorUnits'
+                | 'automaticGuideEnabled'
+                | 'shippingSubsidyMode'
+                | 'shippingSubsidyPercentage'
+                | 'shippingSubsidyFixedMinorUnits'
+                | 'freeShippingThresholdEnabled'
+                | 'freeShippingThresholdMinorUnits'
+                | 'bogotaFreeShippingThresholdEnabled'
+                | 'bogotaFreeShippingThresholdMinorUnits'
+            >
+        >,
     ): Promise<MipaqueteSettings> {
         const settings = await this.getSettings(ctx);
         Object.assign(settings, input);
+        // Clamp rather than reject — a typo like 150 in the Dashboard's % field should never be
+        // able to make shipping *more* expensive than Mi Paquete's own quote.
+        if (settings.shippingSubsidyPercentage < 0) settings.shippingSubsidyPercentage = 0;
+        if (settings.shippingSubsidyPercentage > 100) settings.shippingSubsidyPercentage = 100;
         return this.connection.getRepository(ctx, MipaqueteSettings).save(settings);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Shipping subsidy / envío gratis (checkout price only — never changes what createSending
+    // tells Mi Paquete, see MipaqueteSettings' shippingSubsidyMode doc comment)
+    // ---------------------------------------------------------------------------------------
+
+    /** Applied only by mipaquete-carrier's calculator. Free-shipping threshold wins over the
+     *  subsidy mode (crossing it means $0, not "50% off"). Never returns a negative price. */
+    async applyCarrierShippingPricing(ctx: RequestContext, order: Order, rawPriceMinorUnits: number): Promise<number> {
+        const settings = await this.getSettings(ctx);
+        if (settings.freeShippingThresholdEnabled && order.subTotal >= settings.freeShippingThresholdMinorUnits) {
+            return 0;
+        }
+        if (settings.shippingSubsidyMode === 'PERCENTAGE') {
+            return Math.max(0, Math.round(rawPriceMinorUnits * (1 - settings.shippingSubsidyPercentage / 100)));
+        }
+        if (settings.shippingSubsidyMode === 'FIXED') {
+            return Math.max(0, rawPriceMinorUnits - settings.shippingSubsidyFixedMinorUnits);
+        }
+        return rawPriceMinorUnits;
+    }
+
+    /** Applied only by mipaquete-bogota's calculator — its own independent threshold against the
+     *  same flat rate the admin configures directly (bogotaOwnShippingCostMinorUnits); no subsidy
+     *  mode here, since the admin can already set that flat rate to whatever they want. */
+    async applyBogotaFreeShipping(ctx: RequestContext, order: Order, rawPriceMinorUnits: number): Promise<number> {
+        const settings = await this.getSettings(ctx);
+        if (settings.bogotaFreeShippingThresholdEnabled && order.subTotal >= settings.bogotaFreeShippingThresholdMinorUnits) {
+            return 0;
+        }
+        return rawPriceMinorUnits;
+    }
+
+    /** Backs the checkout's "te faltan $X para envío gratis" progress bar — public settings only
+     *  (no subsidy percentage/amount, the shopper doesn't need those to render the bar), so this is
+     *  safe to expose on the Shop API without auth. */
+    async getFreeShippingProgressSettings(ctx: RequestContext): Promise<{
+        generalEnabled: boolean;
+        generalThresholdMinorUnits: number;
+        bogotaEnabled: boolean;
+        bogotaThresholdMinorUnits: number;
+    }> {
+        const settings = await this.getSettings(ctx);
+        return {
+            generalEnabled: settings.freeShippingThresholdEnabled,
+            generalThresholdMinorUnits: settings.freeShippingThresholdMinorUnits,
+            bogotaEnabled: settings.bogotaFreeShippingThresholdEnabled,
+            bogotaThresholdMinorUnits: settings.bogotaFreeShippingThresholdMinorUnits,
+        };
     }
 
     /** True only when the admin turned the toggle on AND the order is genuinely headed to Bogotá —
@@ -226,6 +294,13 @@ export class MipaqueteService {
      * event pipeline.
      */
     async createShipmentForOrder(ctx: RequestContext, order: Order): Promise<void> {
+        const settings = await this.getSettings(ctx);
+        // "Guía automática" apagada desde el Dashboard — el cotizador (getOrRefreshQuote) sigue
+        // funcionando igual en el checkout; esto solo detiene la creación real del envío en Mi
+        // Paquete. Ningún registro se guarda aquí, igual que las otras salidas tempranas de este
+        // método (envío propio Bogotá, sin transportadora) — el pedido queda para fulfillment manual.
+        if (!settings.automaticGuideEnabled) return;
+
         const idempotencyKey = `mipaquete:order:${order.id}`;
         const shipmentRepo = this.connection.getRepository(ctx, MipaqueteShipment);
         const existing = await shipmentRepo.findOne({ where: { idempotencyKey } });

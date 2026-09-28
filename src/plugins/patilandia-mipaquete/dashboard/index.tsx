@@ -21,10 +21,20 @@ import gql from 'graphql-tag';
 import { Package, RotateCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+type ShippingSubsidyMode = 'NONE' | 'PERCENTAGE' | 'FIXED';
+
 interface MipaqueteSettings {
     id: string;
     bogotaOwnShippingEnabled: boolean;
     bogotaOwnShippingCostMinorUnits: number;
+    automaticGuideEnabled: boolean;
+    shippingSubsidyMode: ShippingSubsidyMode;
+    shippingSubsidyPercentage: number;
+    shippingSubsidyFixedMinorUnits: number;
+    freeShippingThresholdEnabled: boolean;
+    freeShippingThresholdMinorUnits: number;
+    bogotaFreeShippingThresholdEnabled: boolean;
+    bogotaFreeShippingThresholdMinorUnits: number;
 }
 
 interface MipaqueteShipment {
@@ -53,6 +63,14 @@ const SETTINGS_QUERY = gql`
             id
             bogotaOwnShippingEnabled
             bogotaOwnShippingCostMinorUnits
+            automaticGuideEnabled
+            shippingSubsidyMode
+            shippingSubsidyPercentage
+            shippingSubsidyFixedMinorUnits
+            freeShippingThresholdEnabled
+            freeShippingThresholdMinorUnits
+            bogotaFreeShippingThresholdEnabled
+            bogotaFreeShippingThresholdMinorUnits
         }
     }
 `;
@@ -63,6 +81,14 @@ const UPDATE_SETTINGS_MUTATION = gql`
             id
             bogotaOwnShippingEnabled
             bogotaOwnShippingCostMinorUnits
+            automaticGuideEnabled
+            shippingSubsidyMode
+            shippingSubsidyPercentage
+            shippingSubsidyFixedMinorUnits
+            freeShippingThresholdEnabled
+            freeShippingThresholdMinorUnits
+            bogotaFreeShippingThresholdEnabled
+            bogotaFreeShippingThresholdMinorUnits
         }
     }
 `;
@@ -156,7 +182,7 @@ function SettingsTab() {
         api.query<{ mipaqueteSettings: MipaqueteSettings }>(SETTINGS_QUERY).then(result => setSettings(result.mipaqueteSettings));
     }, []);
 
-    async function save(patch: Partial<Pick<MipaqueteSettings, 'bogotaOwnShippingEnabled' | 'bogotaOwnShippingCostMinorUnits'>>) {
+    async function save(patch: Partial<Omit<MipaqueteSettings, 'id'>>) {
         if (!settings) return;
         setSaving(true);
         try {
@@ -180,6 +206,120 @@ function SettingsTab() {
 
             <div className="flex items-center justify-between rounded-lg border p-4">
                 <div>
+                    <p className="font-medium">Guía automática con Mi Paquete</p>
+                    <p className="text-sm text-muted-foreground">
+                        Si está desactivada, el checkout sigue cotizando en tiempo real con Mi Paquete, pero al
+                        pagarse un pedido no se crea el envío real ni la guía automáticamente — hay que crearla a
+                        mano en Mi Paquete y hacer el fulfillment manual desde Vendure.
+                    </p>
+                </div>
+                <Switch
+                    checked={settings.automaticGuideEnabled}
+                    disabled={saving}
+                    onCheckedChange={checked => save({ automaticGuideEnabled: checked })}
+                />
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
+                <div>
+                    <p className="font-medium">Subsidio de envío (Mi Paquete)</p>
+                    <p className="text-sm text-muted-foreground">
+                        Cuánto de la tarifa real cotizada con Mi Paquete asume Patilandia. El cliente sigue viendo el
+                        precio ya rebajado en el checkout — lo que Mi Paquete le cobra a Patilandia por crear el
+                        envío no cambia.
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    {(
+                        [
+                            ['NONE', 'Ninguno'],
+                            ['PERCENTAGE', 'Porcentaje'],
+                            ['FIXED', 'Monto fijo'],
+                        ] as [ShippingSubsidyMode, string][]
+                    ).map(([mode, label]) => (
+                        <Button
+                            key={mode}
+                            disabled={saving}
+                            onClick={() => save({ shippingSubsidyMode: mode })}
+                            size="sm"
+                            type="button"
+                            variant={settings.shippingSubsidyMode === mode ? 'default' : 'outline'}
+                        >
+                            {label}
+                        </Button>
+                    ))}
+                </div>
+                {settings.shippingSubsidyMode === 'PERCENTAGE' && (
+                    <label className="grid gap-2">
+                        <span className="text-sm font-medium">% del envío que asume Patilandia</span>
+                        <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            defaultValue={settings.shippingSubsidyPercentage}
+                            disabled={saving}
+                            onBlur={e => {
+                                const value = Number(e.target.value);
+                                if (value !== settings.shippingSubsidyPercentage) {
+                                    save({ shippingSubsidyPercentage: value });
+                                }
+                            }}
+                        />
+                    </label>
+                )}
+                {settings.shippingSubsidyMode === 'FIXED' && (
+                    <label className="grid gap-2">
+                        <span className="text-sm font-medium">Monto fijo que asume Patilandia (en pesos)</span>
+                        <Input
+                            type="number"
+                            defaultValue={settings.shippingSubsidyFixedMinorUnits / 100}
+                            disabled={saving}
+                            onBlur={e => {
+                                const value = currencyToMinor(Number(e.target.value));
+                                if (value !== settings.shippingSubsidyFixedMinorUnits) {
+                                    save({ shippingSubsidyFixedMinorUnits: value });
+                                }
+                            }}
+                        />
+                    </label>
+                )}
+            </div>
+
+            <div className="space-y-3 rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="font-medium">Envío gratis desde cierto monto (Mi Paquete)</p>
+                        <p className="text-sm text-muted-foreground">
+                            Si el subtotal de productos del pedido alcanza este monto, el envío con cualquier
+                            transportadora de Mi Paquete sale en $0 — tiene prioridad sobre el subsidio de arriba.
+                        </p>
+                    </div>
+                    <Switch
+                        checked={settings.freeShippingThresholdEnabled}
+                        disabled={saving}
+                        onCheckedChange={checked => save({ freeShippingThresholdEnabled: checked })}
+                    />
+                </div>
+                {settings.freeShippingThresholdEnabled && (
+                    <label className="grid gap-2">
+                        <span className="text-sm font-medium">Subtotal mínimo (en pesos)</span>
+                        <Input
+                            type="number"
+                            defaultValue={settings.freeShippingThresholdMinorUnits / 100}
+                            disabled={saving}
+                            onBlur={e => {
+                                const value = currencyToMinor(Number(e.target.value));
+                                if (value !== settings.freeShippingThresholdMinorUnits) {
+                                    save({ freeShippingThresholdMinorUnits: value });
+                                }
+                            }}
+                        />
+                    </label>
+                )}
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-4">
+                <div>
                     <p className="font-medium">Envío propio en Bogotá</p>
                     <p className="text-sm text-muted-foreground">
                         Si está activado, los pedidos con destino Bogotá usan este envío propio en vez de Mi Paquete.
@@ -193,19 +333,54 @@ function SettingsTab() {
             </div>
 
             {settings.bogotaOwnShippingEnabled && (
-                <div>
-                    <label className="text-sm font-medium">Costo del envío propio en Bogotá (en pesos, 0 = gratis)</label>
-                    <Input
-                        type="number"
-                        defaultValue={settings.bogotaOwnShippingCostMinorUnits / 100}
-                        disabled={saving}
-                        onBlur={e => {
-                            const value = currencyToMinor(Number(e.target.value));
-                            if (value !== settings.bogotaOwnShippingCostMinorUnits) {
-                                save({ bogotaOwnShippingCostMinorUnits: value });
-                            }
-                        }}
-                    />
+                <div className="space-y-4">
+                    <label className="grid gap-2">
+                        <span className="text-sm font-medium">Costo del envío propio en Bogotá (en pesos, 0 = gratis)</span>
+                        <Input
+                            type="number"
+                            defaultValue={settings.bogotaOwnShippingCostMinorUnits / 100}
+                            disabled={saving}
+                            onBlur={e => {
+                                const value = currencyToMinor(Number(e.target.value));
+                                if (value !== settings.bogotaOwnShippingCostMinorUnits) {
+                                    save({ bogotaOwnShippingCostMinorUnits: value });
+                                }
+                            }}
+                        />
+                    </label>
+
+                    <div className="space-y-3 rounded-lg border p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="font-medium">Envío propio Bogotá gratis desde cierto monto</p>
+                                <p className="text-sm text-muted-foreground">
+                                    Umbral independiente del de Mi Paquete arriba — suele tener sentido que sea más
+                                    bajo, ya que el envío propio de Bogotá ya es más barato.
+                                </p>
+                            </div>
+                            <Switch
+                                checked={settings.bogotaFreeShippingThresholdEnabled}
+                                disabled={saving}
+                                onCheckedChange={checked => save({ bogotaFreeShippingThresholdEnabled: checked })}
+                            />
+                        </div>
+                        {settings.bogotaFreeShippingThresholdEnabled && (
+                            <label className="grid gap-2">
+                                <span className="text-sm font-medium">Subtotal mínimo (en pesos)</span>
+                                <Input
+                                    type="number"
+                                    defaultValue={settings.bogotaFreeShippingThresholdMinorUnits / 100}
+                                    disabled={saving}
+                                    onBlur={e => {
+                                        const value = currencyToMinor(Number(e.target.value));
+                                        if (value !== settings.bogotaFreeShippingThresholdMinorUnits) {
+                                            save({ bogotaFreeShippingThresholdMinorUnits: value });
+                                        }
+                                    }}
+                                />
+                            </label>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

@@ -65,8 +65,14 @@ export const mipaqueteCarrierCalculator = new ShippingCalculator({
         // Should never happen if the checker already returned true (same cache), but a calculator
         // must return *something* — 0 rather than throwing, since the checker is the real gate and
         // an inconsistent read here shouldn't crash checkout.
+        const rawPrice = option ? Math.round((option.shippingCost + codCommission) * 100) : 0;
+        // Subsidy/free-shipping-threshold applied last, on the full customer-facing price
+        // (shippingCost + codCommission combined) — the shopper only ever sees one number, so it's
+        // that whole line that gets discounted, never just the base shippingCost. Never changes
+        // what productInformation/paymentType send to Mi Paquete's own /createSending later.
+        const price = option ? await mipaqueteService.applyCarrierShippingPricing(ctx, order, rawPrice) : 0;
         return {
-            price: option ? Math.round((option.shippingCost + codCommission) * 100) : 0,
+            price,
             priceIncludesTax: true,
             taxRate: 0,
             metadata: option ? { shippingTimeMinutes: option.shippingTime, score: option.score } : undefined,

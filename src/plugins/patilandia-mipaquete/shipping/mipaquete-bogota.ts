@@ -30,12 +30,17 @@ export const mipaqueteBogotaCalculator = new ShippingCalculator({
     init: async (injector: Injector) => {
         mipaqueteService = injector.get(MipaqueteService);
     },
-    calculate: async (ctx: RequestContext) => {
+    calculate: async (ctx: RequestContext, order: Order) => {
         const settings = await mipaqueteService.getSettings(ctx);
+        const price = await mipaqueteService.applyBogotaFreeShipping(ctx, order, settings.bogotaOwnShippingCostMinorUnits);
         return {
-            price: settings.bogotaOwnShippingCostMinorUnits,
+            price,
             priceIncludesTax: true,
             taxRate: 0,
+            // Lets the storefront's free-shipping progress bar (checkout-page.tsx) tell this method
+            // apart from a real Mi Paquete carrier and switch to Bogotá's own threshold — same
+            // "extra data via metadata" pattern mipaquete-carrier.ts already uses for shippingTime.
+            metadata: { isBogotaOwnShipping: true },
         };
     },
 });

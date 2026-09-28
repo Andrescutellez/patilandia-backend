@@ -14,4 +14,9 @@ export class MipaqueteShopResolver {
     ): Promise<Array<{ locationCode: string; locationName: string; departmentOrStateName: string }>> {
         return this.mipaqueteService.searchLocations(args.search);
     }
+
+    @Query()
+    mipaqueteFreeShippingSettings(@Ctx() ctx: RequestContext) {
+        return this.mipaqueteService.getFreeShippingProgressSettings(ctx);
+    }
 }
