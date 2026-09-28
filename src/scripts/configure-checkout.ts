@@ -38,10 +38,13 @@ import {
     ZoneService,
 } from '@vendure/core';
 
+// vendure-config debe importarse antes que cualquier módulo que lea process.env al cargarse (p.ej.
+// MipaqueteClient) — es el que hace `import 'dotenv/config'`, y en index.ts/index-worker.ts siempre
+// es el primer import por la misma razón.
+import { config } from '../vendure-config';
 import { CASH_ON_DELIVERY_PAYMENT_METHOD_CODE } from '../plugins/patilandia-loyalty/constants';
 import { BOLD_PAYMENT_METHOD_CODE } from '../plugins/patilandia-bold/constants';
 import { MipaqueteClient } from '../plugins/patilandia-mipaquete/services/mipaquete-client';
-import { config } from '../vendure-config';
 
 const loggerCtx = 'ConfigureCheckout';
 const MONEY_FACTOR = 100;
