@@ -21,6 +21,8 @@ import {
 } from './email/native-handlers';
 import { giftOrderConfirmationHandler } from './email/handlers/gift-order-confirmation-handler';
 import { orderStateChangeHandler } from './email/handlers/order-state-change-handler';
+import { newOrderAdminNotificationHandler } from './email/handlers/new-order-admin-notification-handler';
+import { codOrderConfirmationHandler } from './email/handlers/cod-order-confirmation-handler';
 import { EMAIL_ASSET_BASE_URL } from './email/senders';
 import { PatilandiaAdminPlugin } from './plugins/patilandia-admin/patilandia-admin.plugin';
 import { PatilandiaReviewsPlugin } from './plugins/patilandia-reviews/patilandia-reviews.plugin';
@@ -93,6 +95,8 @@ const emailHandlers = [
     orderConfirmationHandler,
     giftOrderConfirmationHandler,
     orderStateChangeHandler,
+    codOrderConfirmationHandler,
+    newOrderAdminNotificationHandler,
     emailVerificationHandler,
     passwordResetHandler,
     emailAddressChangeHandler,

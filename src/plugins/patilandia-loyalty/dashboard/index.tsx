@@ -119,6 +119,15 @@ function minorToCurrency(minorUnits: number): string {
     return currencyFormatter.format(minorUnits / 100);
 }
 
+// Both money-rate inputs below used to accept and display the raw "unidad menor" (minor-units)
+// number directly, with only a small hint showing the converted peso value — a real incident
+// (2026-09-27): an admin typed "500" meaning "$500 per point" into that raw field, which actually
+// set the rate to $5/point, awarding ~100x too many Patipuntos on every purchase. Inputs now take
+// real pesos directly; these two helpers are the only place the ×100/÷100 conversion happens.
+function currencyToMinor(pesos: number): number {
+    return Math.round(pesos * 100);
+}
+
 function RulesTab() {
     const [rules, setRules] = useState<LoyaltyRule[]>([]);
     const [loading, setLoading] = useState(true);
@@ -198,21 +207,21 @@ function RulesTab() {
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-2 text-sm">
-                                        <span>1 punto cada</span>
+                                        <span>1 punto cada $</span>
                                         <Input
                                             className="w-24"
                                             type="number"
-                                            defaultValue={rule.currencyMinorUnitsPerPoint ?? 0}
+                                            defaultValue={(rule.currencyMinorUnitsPerPoint ?? 0) / 100}
                                             disabled={savingId === rule.id}
                                             onBlur={e => {
-                                                const value = Number(e.target.value);
+                                                const value = currencyToMinor(Number(e.target.value));
                                                 if (value !== rule.currencyMinorUnitsPerPoint) {
                                                     saveRule(rule, { currencyMinorUnitsPerPoint: value });
                                                 }
                                             }}
                                         />
                                         <span className="text-muted-foreground">
-                                            (unidad menor — {minorToCurrency(rule.currencyMinorUnitsPerPoint ?? 0)})
+                                            COP (unidad menor guardada: {rule.currencyMinorUnitsPerPoint ?? 0})
                                         </span>
                                     </div>
                                 )}
@@ -272,14 +281,16 @@ function SettingsTab() {
     return (
         <div className="max-w-md space-y-4">
             <div>
-                <label className="text-sm font-medium">Valor del punto (unidad menor de la moneda)</label>
+                <label className="text-sm font-medium">Valor del punto al canjear (en pesos)</label>
                 <Input
                     type="number"
-                    value={settings.pointValueInMinorUnits}
-                    onChange={e => setSettings({ ...settings, pointValueInMinorUnits: Number(e.target.value) })}
+                    value={settings.pointValueInMinorUnits / 100}
+                    onChange={e =>
+                        setSettings({ ...settings, pointValueInMinorUnits: currencyToMinor(Number(e.target.value)) })
+                    }
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                    Equivale a {minorToCurrency(settings.pointValueInMinorUnits)} por punto.
+                    Unidad menor guardada: {settings.pointValueInMinorUnits} ({minorToCurrency(settings.pointValueInMinorUnits)} por punto).
                 </p>
             </div>
             <div>

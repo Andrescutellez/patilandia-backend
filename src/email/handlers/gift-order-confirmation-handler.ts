@@ -2,6 +2,7 @@ import { EntityHydrator, OrderStateTransitionEvent } from '@vendure/core';
 import { EmailEventListener, shippingLinesWithMethod, transformOrderLineAssetUrls } from '@vendure/email-plugin';
 
 import { REPLY_TO, SENDERS } from '../senders';
+import { isCashOnDelivery } from '../order-timing';
 
 /**
  * The gift-order counterpart to Vendure's own `orderConfirmationHandler` — same trigger
@@ -11,6 +12,12 @@ import { REPLY_TO, SENDERS } from '../senders';
  * Order.customFields.isGift — see patilandia-gifts/types.ts for the type augmentation). The native
  * handler is filtered in src/email/native-handlers.ts to exclude these, so a gift order gets this
  * template instead of the standard one, never both.
+ *
+ * Cash-on-delivery gift orders are excluded too, same reasoning as native-handlers.ts: PaymentSettled
+ * only happens for COD once the admin settles it at shipping time, not when the order is placed. A
+ * COD gift order gets codOrderConfirmationHandler's plain (non-gift-flavored) confirmation instead —
+ * a deliberate v1 simplification, since a customer actually getting *some* confirmation matters more
+ * here than gift-specific wording for what should be a rare combination.
  */
 export const giftOrderConfirmationHandler = new EmailEventListener('gift-order-confirmation')
     .on(OrderStateTransitionEvent)
@@ -19,7 +26,8 @@ export const giftOrderConfirmationHandler = new EmailEventListener('gift-order-c
             event.toState === 'PaymentSettled' &&
             event.fromState !== 'Modifying' &&
             !!event.order.customer &&
-            !!event.order.customFields?.isGift,
+            !!event.order.customFields?.isGift &&
+            !isCashOnDelivery(event.order),
     )
     .loadData(async ({ event, injector }) => {
         const entityHydrator = injector.get(EntityHydrator);

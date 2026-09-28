@@ -70,6 +70,11 @@ export const SENDERS = {
  *  since Purelymail delivers all the aliases to the same two real mailboxes anyway. */
 export const REPLY_TO = resolvedReplyTo;
 
+/** Plain address (not the `"Name" <addr>` format SENDERS.* uses) — the recipient of the internal
+ *  "nueva venta" notification (new-order-admin-notification-handler.ts), the only handler in this
+ *  project that sends TO the store instead of a customer. */
+export const ADMIN_SALES_RECIPIENT = resolvedVentas;
+
 /**
  * Base URL for static assets *embedded inside* an email body (today: the logo in
  * partials/header.hbs) — deliberately separate from STOREFRONT_URL (see vendure-config.ts). An
