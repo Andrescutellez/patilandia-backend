@@ -24,4 +24,8 @@ declare module '@vendure/core' {
         deliveryNotes: string | null;
         locationCode: string | null;
     }
+
+    interface CustomOrderFields {
+        paymentMethodIntent: string | null;
+    }
 }

@@ -4,6 +4,10 @@ import { MipaqueteService } from '../services/mipaquete.service';
 
 let mipaqueteService: MipaqueteService;
 
+// Same code/duplicated-constant convention as src/email/order-timing.ts's isCashOnDelivery — this
+// plugin doesn't import across the patilandia-loyalty plugin boundary for one string.
+const CASH_ON_DELIVERY_PAYMENT_METHOD_CODE = 'cash-on-delivery';
+
 /**
  * One ShippingMethod is registered per real Mi Paquete carrier (see
  * src/scripts/configure-checkout.ts, using the real `_id`s from /getDeliveryCompanies) — this pair
@@ -51,11 +55,18 @@ export const mipaqueteCarrierCalculator = new ShippingCalculator({
     calculate: async (ctx: RequestContext, order: Order, args) => {
         const quote = await mipaqueteService.getOrRefreshQuote(ctx, order);
         const option = quote?.find(o => o.deliveryCompanyId === args.deliveryCompanyId);
+        // A contraentrega shipment costs Mi Paquete more to handle (they collect cash on our
+        // behalf) — collectionCommissionWithRate is that extra cost, charged to Patilandia on top
+        // of shippingCost. Passed on to the shopper rather than absorbed, per explicit confirmation.
+        // paymentMethodIntent is set by the storefront (setOrderCustomFields) as soon as the
+        // shopper picks a payment method, before shipping methods are quoted — see vendure-config.ts.
+        const isCod = order.customFields.paymentMethodIntent === CASH_ON_DELIVERY_PAYMENT_METHOD_CODE;
+        const codCommission = isCod ? (option?.collectionCommissionWithRate ?? 0) : 0;
         // Should never happen if the checker already returned true (same cache), but a calculator
         // must return *something* — 0 rather than throwing, since the checker is the real gate and
         // an inconsistent read here shouldn't crash checkout.
         return {
-            price: option ? Math.round(option.shippingCost * 100) : 0,
+            price: option ? Math.round((option.shippingCost + codCommission) * 100) : 0,
             priceIncludesTax: true,
             taxRate: 0,
             metadata: option ? { shippingTimeMinutes: option.shippingTime, score: option.score } : undefined,

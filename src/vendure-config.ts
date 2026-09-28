@@ -436,6 +436,14 @@ export const config: VendureConfig = {
             { name: 'giftMessage', type: 'text', nullable: true },
             { name: 'giftSenderName', type: 'string', nullable: true },
             { name: 'giftAnonymous', type: 'boolean', defaultValue: false },
+            // Set by the storefront (same setOrderCustomFields mutation) as soon as the shopper
+            // picks a payment method, BEFORE shipping methods are quoted — mipaquete-carrier's
+            // calculator reads this to add Mi Paquete's collection commission (collectionCommissionWithRate)
+            // on top of the shipping price when it's "cash-on-delivery", since a contraentrega
+            // shipment costs Mi Paquete more to handle than a prepaid one. Nullable: a fresh order
+            // hasn't chosen a payment method yet, and the quote must not assume prepaid silently —
+            // see mipaquete-carrier.ts.
+            { name: 'paymentMethodIntent', type: 'string', nullable: true },
         ],
         // A JSON snapshot of what the shopper answered for THIS line's personalization (field
         // label + value, not just an id, so an old order stays readable even if the field is later
