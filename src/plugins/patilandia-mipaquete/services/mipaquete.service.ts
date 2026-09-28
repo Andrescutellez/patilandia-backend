@@ -17,6 +17,7 @@ import { createHash } from 'crypto';
 
 import { mapMipaqueteStateToFulfillmentState } from './mipaquete-state-map';
 
+import { isCashOnDelivery } from '../../../email/order-timing';
 import { BOGOTA_DANE_CODE, COLOMBIA_COUNTRY_CODE, MIPAQUETE_FULFILLMENT_HANDLER_CODE, loggerCtx } from '../constants';
 import { MipaqueteQuoteCache } from '../entities/mipaquete-quote-cache.entity';
 import { MipaqueteSettings } from '../entities/mipaquete-settings.entity';
@@ -234,7 +235,7 @@ export class MipaqueteService {
         // never a valid EntityHydrator relation path (confirmed against the real server earlier
         // this session while building patilandia-fulfillment-handler.ts).
         await this.entityHydrator.hydrate(ctx, order, {
-            relations: ['customer', 'shippingLines.shippingMethod', 'lines.productVariant'],
+            relations: ['customer', 'payments', 'shippingLines.shippingMethod', 'lines.productVariant'],
         });
 
         const destinyLocationCode = order.shippingAddress?.customFields?.locationCode;
@@ -270,6 +271,12 @@ export class MipaqueteService {
             const origin = requireOriginLocationCode();
             const address = order.shippingAddress;
             const [firstName, ...rest] = (address.fullName || order.customer.firstName || 'Cliente').trim().split(/\s+/);
+            const declaredValue = Math.max(1, Math.round(order.subTotal / 100));
+            // Contraentrega: el mensajero debe cobrarle al cliente el pedido completo (productos +
+            // envío, lo mismo que ve en el checkout como "Total") — nada se pagó antes, a diferencia
+            // de un pedido prepagado (paymentType 101), donde Mi Paquete no cobra nada al entregar.
+            const isCod = isCashOnDelivery(order);
+            const valueToCollect = Math.max(1, Math.round(order.totalWithTax / 100));
             const created = await this.client.createSending({
                 sender: {
                     name: process.env.MIPAQUETE_SENDER_NAME ?? 'Patilandia',
@@ -297,16 +304,16 @@ export class MipaqueteService {
                     weight: parcel.weightKg,
                     forbiddenProduct: true,
                     productReference: order.code,
-                    declaredValue: Math.max(1, Math.round(order.subTotal / 100)),
+                    declaredValue,
                 },
                 locate: { originDaneCode: origin, destinyDaneCode: destinyLocationCode },
                 channel: 'Patilandia',
                 deliveryCompany: String(deliveryCompanyIdArg),
                 description: `Pedido Patilandia #${order.code}`,
-                paymentType: 101,
-                valueCollection: 0,
+                paymentType: isCod ? 102 : 101,
+                valueCollection: isCod ? valueToCollect : 0,
                 requestPickup: false,
-                adminTransactionData: { saleValue: 0 },
+                adminTransactionData: { saleValue: isCod ? declaredValue : 0 },
             });
 
             const fulfillmentResult = await this.orderService.createFulfillment(ctx, {
