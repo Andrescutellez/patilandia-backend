@@ -29,6 +29,16 @@ import { MipaqueteApiError, MipaqueteClient, MipaqueteNotConfiguredError, type Q
  *  every quote/shipment originates from, never the customer's address. */
 const originLocationCode = process.env.MIPAQUETE_ORIGIN_LOCATION_CODE;
 
+/** Lowercase + strip diacritics, so "medellin"/"MEDELLIN" matches "MEDELLÍN" and "bogota" matches
+ *  "BOGOTÁ D.C.". */
+function normalizeForSearch(value: string): string {
+    return value
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '');
+}
+
 function requireOriginLocationCode(): string {
     if (!originLocationCode) {
         throw new Error('MIPAQUETE_ORIGIN_LOCATION_CODE debe estar configurada (código DANE de la ciudad de despacho)');
@@ -92,14 +102,15 @@ export class MipaqueteService {
     /** Backs the checkout's city autocomplete — filters the (internally cached) full /getLocations
      *  list by name, so the storefront never needs its own copy of Colombia's municipalities. Never
      *  throws: an unconfigured/unreachable Mi Paquete just yields no results, same "don't invent
-     *  data" rule as the quote itself. */
+     *  data" rule as the quote itself. Accent/case-insensitive (NFD strip) since a shopper typing
+     *  "medellin"/"MEDELLIN" without the tilde must still match "MEDELLÍN". */
     async searchLocations(search: string): Promise<Array<{ locationCode: string; locationName: string; departmentOrStateName: string }>> {
-        const term = search.trim().toLowerCase();
+        const term = normalizeForSearch(search);
         if (term.length < 2) return [];
         try {
             const all = await this.client.getLocations();
             return all
-                .filter(loc => loc.locationName.toLowerCase().includes(term))
+                .filter(loc => normalizeForSearch(loc.locationName).includes(term))
                 .slice(0, 20)
                 .map(loc => ({
                     locationCode: loc.locationCode,
