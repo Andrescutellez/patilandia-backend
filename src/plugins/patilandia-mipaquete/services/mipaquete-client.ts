@@ -151,6 +151,19 @@ export interface SendingTrackingResult {
     destiny: string;
 }
 
+export interface WebhookUrlConfig {
+    urlClient?: string;
+    enabled?: boolean;
+    headers?: Array<{ name: string; value: string }>;
+}
+
+export interface WebhookConfigResult {
+    _id: string;
+    user: string;
+    urlForGuides?: { urlClient: string; enabled: boolean; createdAt: string; updatedAt: string };
+    urlForStates?: { urlClient: string; enabled: boolean; createdAt: string; updatedAt: string };
+}
+
 /**
  * Full client for mipaquete.com's API v2, implemented exactly per mipaquete-api-v2.md — every
  * endpoint listed in that document's section 5, plus the quirks in section 4 (integers for
@@ -264,5 +277,23 @@ export class MipaqueteClient {
 
     cancelSending(mpCode: number): Promise<{ message: string }> {
         return this.request('put', '/cancelSending', { data: { mpCode } });
+    }
+
+    /** mipaquete-api-v2.md sección 6.1 — `urlClient`/`enabled` obligatorios dentro de cada objeto
+     *  enviado; no acepta `headers` en la creación (eso solo lo documenta updateAndDisableWebhook). */
+    createWebHook(input: {
+        urlForGuides?: { urlClient: string; enabled: boolean };
+        urlForStates?: { urlClient: string; enabled: boolean };
+    }): Promise<WebhookConfigResult> {
+        return this.request('post', '/createWebHook', { data: input });
+    }
+
+    /** mipaquete-api-v2.md sección 6.2 — usada aquí para adjuntar el header `x-webhook-secret` tras
+     *  crear el webhook, y también sirve para desactivar (`enabled: false`) o cambiar la URL luego. */
+    updateAndDisableWebhook(input: {
+        urlForGuides?: WebhookUrlConfig;
+        urlForStates?: WebhookUrlConfig;
+    }): Promise<WebhookConfigResult> {
+        return this.request('put', '/updateAndDisableWebhook', { data: input });
     }
 }
