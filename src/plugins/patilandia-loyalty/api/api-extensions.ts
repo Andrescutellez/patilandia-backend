@@ -27,6 +27,8 @@ const sharedTypes = gql`
     referenceId: String
     balanceAfter: Int!
     metadata: JSON
+    "Only resolvable where the query eagerly loads it (see LoyaltyService.listAllTransactions) — myLoyaltyTransactions doesn't load this relation."
+    account: LoyaltyAccount
   }
 
   type LoyaltyRule implements Node {

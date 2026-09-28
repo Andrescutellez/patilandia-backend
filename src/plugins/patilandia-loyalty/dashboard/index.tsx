@@ -112,6 +112,14 @@ const TRANSACTIONS_QUERY = gql`
     }
 `;
 
+const ADJUST_BALANCE_MUTATION = gql`
+    mutation AdjustLoyaltyBalance($customerEmail: String!, $points: Int!, $reason: String!) {
+        adjustLoyaltyBalance(customerEmail: $customerEmail, points: $points, reason: $reason) {
+            id
+        }
+    }
+`;
+
 const dateFormatter = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
 const currencyFormatter = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 
@@ -308,6 +316,93 @@ function SettingsTab() {
     );
 }
 
+/**
+ * The Dashboard-side counterpart to the already-built adjustLoyaltyBalance mutation/adjustBalance()
+ * service method — until now that mutation had no UI anywhere, so the only cases it covers (a
+ * post-delivery return/refund, since Vendure has no "Returned" order state and reverseForOrder only
+ * fires on Cancelled — see event-subscribers.ts) required calling the Admin API by hand. `points`
+ * accepts negative numbers on purpose, for exactly that case.
+ */
+function ManualAdjustmentForm({ onAdjusted }: { onAdjusted: () => void }) {
+    const [customerEmail, setCustomerEmail] = useState('');
+    const [points, setPoints] = useState('');
+    const [reason, setReason] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    async function submit() {
+        const parsedPoints = Number(points);
+        if (!customerEmail.trim() || !reason.trim() || !Number.isInteger(parsedPoints) || parsedPoints === 0) {
+            toast.error('Completa correo, puntos (distinto de cero) y motivo.');
+            return;
+        }
+        setSubmitting(true);
+        try {
+            await api.mutate(ADJUST_BALANCE_MUTATION, {
+                customerEmail: customerEmail.trim(),
+                points: parsedPoints,
+                reason: reason.trim(),
+            });
+            toast.success('Ajuste aplicado');
+            setCustomerEmail('');
+            setPoints('');
+            setReason('');
+            onAdjusted();
+        } catch (err) {
+            toast.error('No se pudo aplicar el ajuste', {
+                description: err instanceof Error ? err.message : undefined,
+            });
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    return (
+        <div className="space-y-3 rounded-lg border p-4">
+            <p className="text-sm font-medium">Ajuste manual de saldo</p>
+            <p className="text-xs text-muted-foreground">
+                Para casos que el sistema no cubre solo (ej. una devolución después de entregado). Usa puntos
+                negativos para restar.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs text-muted-foreground">Correo del cliente</label>
+                    <Input
+                        className="w-56"
+                        value={customerEmail}
+                        onChange={e => setCustomerEmail(e.target.value)}
+                        placeholder="cliente@correo.com"
+                        disabled={submitting}
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs text-muted-foreground">Puntos (+/-)</label>
+                    <Input
+                        className="w-28"
+                        type="number"
+                        value={points}
+                        onChange={e => setPoints(e.target.value)}
+                        placeholder="-200"
+                        disabled={submitting}
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-xs text-muted-foreground">Motivo</label>
+                    <Input
+                        className="w-64"
+                        value={reason}
+                        onChange={e => setReason(e.target.value)}
+                        placeholder="Devolución pedido #1234"
+                        disabled={submitting}
+                    />
+                </div>
+                <Button onClick={submit} disabled={submitting}>
+                    {submitting ? 'Aplicando…' : 'Aplicar ajuste'}
+                </Button>
+            </div>
+        </div>
+    );
+}
+
 function MovementsTab() {
     const [transactions, setTransactions] = useState<LoyaltyTransaction[]>([]);
     const [loading, setLoading] = useState(true);
@@ -332,6 +427,7 @@ function MovementsTab() {
 
     return (
         <div className="space-y-4">
+            <ManualAdjustmentForm onAdjusted={load} />
             <div className="flex items-center justify-end">
                 <Button size="sm" variant="ghost" onClick={() => load()} disabled={loading}>
                     <RotateCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
