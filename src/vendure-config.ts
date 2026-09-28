@@ -1,5 +1,7 @@
 import {
     dummyPaymentHandler,
+    defaultShippingCalculator,
+    defaultShippingEligibilityChecker,
     DefaultJobQueuePlugin,
     DefaultSchedulerPlugin,
     DefaultSearchPlugin,
@@ -45,6 +47,10 @@ import { PatilandiaWhatsappPlugin } from './plugins/patilandia-whatsapp/patiland
 import { PatilandiaProcurementPlugin } from './plugins/patilandia-procurement/patilandia-procurement.plugin';
 import { PatilandiaBoldPlugin } from './plugins/patilandia-bold/patilandia-bold.plugin';
 import { patilandiaFulfillmentHandler } from './config/patilandia-fulfillment-handler';
+import { PatilandiaMipaquetePlugin } from './plugins/patilandia-mipaquete/patilandia-mipaquete.plugin';
+import { mipaqueteBogotaChecker, mipaqueteBogotaCalculator } from './plugins/patilandia-mipaquete/shipping/mipaquete-bogota';
+import { mipaqueteCarrierChecker, mipaqueteCarrierCalculator } from './plugins/patilandia-mipaquete/shipping/mipaquete-carrier';
+import { mipaqueteFulfillmentHandler } from './plugins/patilandia-mipaquete/shipping/mipaquete-fulfillment-handler';
 
 const IS_DEV = process.env.APP_ENV === 'dev';
 // PORT wins because hosting platforms inject it into the environment at runtime, and that
@@ -175,10 +181,23 @@ export const config: VendureConfig = {
     paymentOptions: {
         paymentMethodHandlers: [dummyPaymentHandler],
     },
-    // Replaces the default manualFulfillmentHandler with the same-code version that adds an
-    // optional trackingUrl arg — see patilandia-fulfillment-handler.ts.
+    // fulfillmentHandlers: patilandiaFulfillmentHandler replaces the default manualFulfillmentHandler
+    // with the same-code version that adds an optional trackingUrl arg (see
+    // config/patilandia-fulfillment-handler.ts); mipaqueteFulfillmentHandler is the automated
+    // counterpart patilandia-mipaquete creates shipments with (never offered manually).
+    // shippingCalculators/shippingEligibilityCheckers: the two pairs patilandia-mipaquete registers —
+    // one ShippingMethod per real Mi Paquete carrier uses mipaqueteCarrier*, "Envío propio Bogotá"
+    // uses mipaqueteBogota* — see src/scripts/configure-checkout.ts for where those ShippingMethods
+    // get created.
     shippingOptions: {
-        fulfillmentHandlers: [patilandiaFulfillmentHandler],
+        fulfillmentHandlers: [patilandiaFulfillmentHandler, mipaqueteFulfillmentHandler],
+        // Keeps Vendure's own defaults registered too (not removed) — the 2 pre-existing flat-rate
+        // ShippingMethods from configure-checkout.ts (standard-shipping/express-shipping) still
+        // reference them by code, and old Orders' shippingLines snapshot whichever method they used
+        // at the time. configure-checkout.ts disables (not deletes) those 2 methods once the real
+        // Mi Paquete ones exist, rather than this config ever breaking their reference.
+        shippingEligibilityCheckers: [defaultShippingEligibilityChecker, mipaqueteCarrierChecker, mipaqueteBogotaChecker],
+        shippingCalculators: [defaultShippingCalculator, mipaqueteCarrierCalculator, mipaqueteBogotaCalculator],
     },
     // Lets a line's price depend on its own customFields (e.g. a personalization surcharge) —
     // see patilandia-personalization/pricing/personalization-price-calculation-strategy.ts. The
@@ -334,8 +353,54 @@ export const config: VendureConfig = {
                 ],
             },
         ],
+        // weightKg/length/width/height are what patilandia-mipaquete's packing.ts sums/maxes into
+        // the single-package quote sent to Mi Paquete (see that plugin's README-style comment at
+        // the top of packing.ts) — Mi Paquete requires integers, so these get Math.ceil()'d at the
+        // point of use rather than changed to `int` here, to avoid a migration risk for existing
+        // rows. length/width/height are new (2026-09-27, no dimension fields existed before this);
+        // existing variants get `defaultValue: 10` (a deliberately obvious placeholder, not a real
+        // guess) so nothing already published breaks — see patilandia-mipaquete's Dashboard page for
+        // the "variantes con datos de envío incompletos" list that flags every variant still sitting
+        // on that default so an admin can fill in the real number.
         ProductVariant: [
-            { name: 'weightKg', type: 'float' },
+            {
+                name: 'weightKg',
+                type: 'float',
+                label: [{ languageCode: LanguageCode.es, value: 'Peso (kg)' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Peso real de esta variante empacada — se usa para cotizar el envío con la transportadora.',
+                    },
+                ],
+            },
+            {
+                name: 'length',
+                type: 'int',
+                defaultValue: 10,
+                label: [{ languageCode: LanguageCode.es, value: 'Largo (cm)' }],
+                description: [
+                    { languageCode: LanguageCode.es, value: 'Largo real del empaque de esta variante, en centímetros.' },
+                ],
+            },
+            {
+                name: 'width',
+                type: 'int',
+                defaultValue: 10,
+                label: [{ languageCode: LanguageCode.es, value: 'Ancho (cm)' }],
+                description: [
+                    { languageCode: LanguageCode.es, value: 'Ancho real del empaque de esta variante, en centímetros.' },
+                ],
+            },
+            {
+                name: 'height',
+                type: 'int',
+                defaultValue: 10,
+                label: [{ languageCode: LanguageCode.es, value: 'Alto (cm)' }],
+                description: [
+                    { languageCode: LanguageCode.es, value: 'Alto real del empaque de esta variante, en centímetros.' },
+                ],
+            },
             {
                 name: 'shippingClass',
                 type: 'string',
@@ -392,6 +457,12 @@ export const config: VendureConfig = {
         Address: [
             { name: 'neighborhood', type: 'string', nullable: true },
             { name: 'deliveryNotes', type: 'text', nullable: true },
+            // The DANE location code Mi Paquete requires to cotizar/crear un envío (ej. "11001000"
+            // Bogotá) — set by the storefront's city selector (backed by patilandia-mipaquete's
+            // cached /getLocations) via setOrderShippingAddress, same mechanism as neighborhood
+            // above. Nullable: an order placed before this existed, or one shipped by hand, never
+            // has it — every Mi Paquete read site treats a missing code as "can't quote/create".
+            { name: 'locationCode', type: 'string', nullable: true },
         ],
         // Set by patilandia-fulfillment-handler.ts's createFulfillment() from the optional
         // trackingUrl arg the admin fills in the Dashboard's "Fulfill order" dialog — never set
@@ -472,5 +543,6 @@ export const config: VendureConfig = {
             sandbox: boldSandbox,
             storefrontUrl,
         }),
+        PatilandiaMipaquetePlugin,
     ],
 };

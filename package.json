@@ -23,6 +23,7 @@
     "@vendure/dashboard": "3.7.3",
     "@vendure/email-plugin": "3.7.3",
     "@vendure/graphiql-plugin": "3.7.3",
+    "axios": "^1.20.0",
     "dotenv": "17.4.2",
     "express": "^5.2.1",
     "pg": "8.23.0"

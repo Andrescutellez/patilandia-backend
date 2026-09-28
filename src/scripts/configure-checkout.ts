@@ -30,6 +30,7 @@ import {
     LanguageCode,
     Logger,
     PaymentMethodService,
+    RequestContext,
     RequestContextService,
     ShippingMethodService,
     TaxCategoryService,
@@ -39,6 +40,7 @@ import {
 
 import { CASH_ON_DELIVERY_PAYMENT_METHOD_CODE } from '../plugins/patilandia-loyalty/constants';
 import { BOLD_PAYMENT_METHOD_CODE } from '../plugins/patilandia-bold/constants';
+import { MipaqueteClient } from '../plugins/patilandia-mipaquete/services/mipaquete-client';
 import { config } from '../vendure-config';
 
 const loggerCtx = 'ConfigureCheckout';
@@ -107,6 +109,9 @@ async function run() {
             Logger.info(`  ✔ Método de envío "${code}" creado -> $${rate.toLocaleString('es-CO')} COP`, loggerCtx);
         }
     }
+
+    Logger.info('Configurando los métodos de envío de Mi Paquete…', loggerCtx);
+    await configureMipaqueteShippingMethods(ctx, shippingMethodService, app.get(MipaqueteClient));
 
     Logger.info('Configurando el 19% de IVA real de Colombia…', loggerCtx);
     // Both Colombia (as a Country) and the "Standard Tax" category are normally seeded by
@@ -236,6 +241,79 @@ async function run() {
 
     Logger.info('Checkout config listo.', loggerCtx);
     await app.close();
+}
+
+const BOGOTA_SHIPPING_METHOD_CODE = 'mipaquete-bogota';
+
+/**
+ * Replaces the flat-rate standard-shipping/express-shipping with real Mi Paquete quoting, per the
+ * user's explicit brief ("no mostrar un precio fijo de envío, no crear una tabla manual de precios").
+ * One ShippingMethod per real Mi Paquete carrier (fetched live from /getDeliveryCompanies, never
+ * hardcoded IDs) plus "Envío propio Bogotá" (always created — doesn't need Mi Paquete at all).
+ *
+ * Safe to re-run, and safe to run before MIPAQUETE_API_KEY is set: without it, this only creates
+ * the Bogotá method and logs a clear skip for the carrier methods — it deliberately does NOT retire
+ * standard-shipping/express-shipping in that case, so checkout never ends up with zero eligible
+ * methods during the transition to a configured Mi Paquete account.
+ */
+async function configureMipaqueteShippingMethods(
+    ctx: RequestContext,
+    shippingMethodService: ShippingMethodService,
+    mipaqueteClient: MipaqueteClient,
+): Promise<void> {
+    const { items: existing } = await shippingMethodService.findAll(ctx, { take: 200 });
+
+    if (!existing.some(m => m.code === BOGOTA_SHIPPING_METHOD_CODE)) {
+        await shippingMethodService.create(ctx, {
+            code: BOGOTA_SHIPPING_METHOD_CODE,
+            fulfillmentHandler: 'manual-fulfillment',
+            checker: { code: 'mipaquete-bogota-checker', arguments: [] },
+            calculator: { code: 'mipaquete-bogota-calculator', arguments: [] },
+            translations: [
+                { languageCode: LanguageCode.es, name: 'Envío propio (Bogotá)', description: '' },
+            ],
+        });
+        Logger.info('  ✔ Método de envío "Envío propio (Bogotá)" creado', loggerCtx);
+    }
+
+    let carriers: Awaited<ReturnType<MipaqueteClient['getDeliveryCompanies']>>;
+    try {
+        carriers = await mipaqueteClient.getDeliveryCompanies();
+    } catch (err) {
+        Logger.warn(
+            `No se pudo consultar /getDeliveryCompanies de Mi Paquete (¿falta MIPAQUETE_API_KEY?) — no se crearon métodos de envío por transportadora. Los flat-rate existentes NO se retiraron. Detalle: ${err instanceof Error ? err.message : err}`,
+            loggerCtx,
+        );
+        return;
+    }
+
+    for (const carrier of carriers) {
+        const code = `mipaquete-${carrier._id}`;
+        if (existing.some(m => m.code === code)) continue;
+        await shippingMethodService.create(ctx, {
+            code,
+            fulfillmentHandler: 'manual-fulfillment',
+            checker: {
+                code: 'mipaquete-carrier-checker',
+                arguments: [{ name: 'deliveryCompanyId', value: carrier._id }],
+            },
+            calculator: {
+                code: 'mipaquete-carrier-calculator',
+                arguments: [{ name: 'deliveryCompanyId', value: carrier._id }],
+            },
+            translations: [{ languageCode: LanguageCode.es, name: carrier.name, description: '' }],
+        });
+        Logger.info(`  ✔ Método de envío "${carrier.name}" (Mi Paquete) creado`, loggerCtx);
+    }
+
+    // Only retire the flat-rate fallbacks once real Mi Paquete methods exist to replace them.
+    for (const legacyCode of ['standard-shipping', 'express-shipping']) {
+        const legacy = existing.find(m => m.code === legacyCode);
+        if (legacy) {
+            await shippingMethodService.softDelete(ctx, legacy.id);
+            Logger.info(`  ✔ Método de envío "${legacyCode}" retirado (reemplazado por Mi Paquete)`, loggerCtx);
+        }
+    }
 }
 
 run()
