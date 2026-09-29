@@ -11,6 +11,7 @@ import {
 } from '@vendure/core';
 
 import { PATILANDIA_FEEDS_PLUGIN_OPTIONS, loggerCtx } from '../constants';
+import { resolveGoogleProductCategory } from '../google-category-mapping';
 import { NormalizedProduct, PluginInitOptions } from '../types';
 
 /** Vendure stores money as an integer in the currency's minor unit (COP has none in practice, but
@@ -42,6 +43,9 @@ export function buildNormalizedProduct(params: {
     const { variant, priceWithTax, saleableStockLevel } = hydratedVariant;
 
     const brand = product.facetValues.find(fv => fv.facet.code === 'brand')?.name ?? null;
+    const categoryCode = product.facetValues.find(fv => fv.facet.code === 'category')?.code ?? null;
+    const petTypeCode = product.facetValues.find(fv => fv.facet.code === 'pet-type')?.code ?? null;
+    const googleProductCategory = resolveGoogleProductCategory(categoryCode, petTypeCode);
     const compareAtPriceMinorUnits = variant.customFields.compareAtPrice;
     const isOnSale = Boolean(compareAtPriceMinorUnits) && compareAtPriceMinorUnits! > priceWithTax;
     const regularPriceMinorUnits = isOnSale ? compareAtPriceMinorUnits! : priceWithTax;
@@ -77,7 +81,7 @@ export function buildNormalizedProduct(params: {
         mpn,
         identifierExists,
         categoryPath,
-        googleProductCategory: null,
+        googleProductCategory,
         customLabel0: product.customFields.adsEligible ? 'alto-margen' : null,
         weightKg: variant.customFields.weightKg ?? null,
     };

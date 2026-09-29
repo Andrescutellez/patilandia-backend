@@ -221,9 +221,59 @@ describe('buildNormalizedProduct', () => {
         expect(result.productUrl).toBe('https://patilandia.com.co/producto/comida-para-gato-hills');
     });
 
-    it('never populates googleProductCategory — that mapping table is F1-4, not built yet', () => {
+    it('resolves googleProductCategory from the real mapping when category + pet-type are both known', () => {
         const result = buildNormalizedProduct({
-            product: fakeProduct(),
+            product: fakeProduct({
+                facetValues: [
+                    { facet: { code: 'category' }, code: 'alimentos', name: 'Alimentos' },
+                    { facet: { code: 'pet-type' }, code: 'cats', name: 'Gatos' },
+                ] as unknown as Translated<Product>['facetValues'],
+            }),
+            hydratedVariant: fakeHydratedVariant(),
+            categoryPath: [],
+            storefrontUrl,
+            currency,
+        });
+        expect(result.googleProductCategory).toBe('Animals & Pet Supplies > Pet Supplies > Cat Supplies > Cat Food');
+    });
+
+    it('resolves the dog variant of the same category to a different Google category', () => {
+        const result = buildNormalizedProduct({
+            product: fakeProduct({
+                facetValues: [
+                    { facet: { code: 'category' }, code: 'alimentos', name: 'Alimentos' },
+                    { facet: { code: 'pet-type' }, code: 'dogs', name: 'Perros' },
+                ] as unknown as Translated<Product>['facetValues'],
+            }),
+            hydratedVariant: fakeHydratedVariant(),
+            categoryPath: [],
+            storefrontUrl,
+            currency,
+        });
+        expect(result.googleProductCategory).toBe('Animals & Pet Supplies > Pet Supplies > Dog Supplies > Dog Food');
+    });
+
+    it('leaves googleProductCategory null when the product has no pet-type assigned yet — matches today\'s real Hill\'s product', () => {
+        const result = buildNormalizedProduct({
+            product: fakeProduct({
+                facetValues: [{ facet: { code: 'category' }, code: 'alimentos', name: 'Alimentos' }] as unknown as Translated<Product>['facetValues'],
+            }),
+            hydratedVariant: fakeHydratedVariant(),
+            categoryPath: [],
+            storefrontUrl,
+            currency,
+        });
+        expect(result.googleProductCategory).toBeNull();
+    });
+
+    it('leaves googleProductCategory null for a category/pet-type combination with no mapping entry yet', () => {
+        const result = buildNormalizedProduct({
+            product: fakeProduct({
+                facetValues: [
+                    { facet: { code: 'category' }, code: 'camitas', name: 'Camitas' },
+                    { facet: { code: 'pet-type' }, code: 'cats', name: 'Gatos' },
+                ] as unknown as Translated<Product>['facetValues'],
+            }),
             hydratedVariant: fakeHydratedVariant(),
             categoryPath: [],
             storefrontUrl,

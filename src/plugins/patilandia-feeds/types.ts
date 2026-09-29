@@ -25,8 +25,8 @@ export type FeedCondition = 'new';
  *  - price/salePrice/availability: F1-3 in the roadmap.
  *  - images/productUrl/variantUrl/categoryPath/googleProductCategory: F1-4.
  *  - brand/gtin/mpn/identifierExists/customLabel0: F1-5 and F1-1's adsEligible checklist.
- * `googleProductCategory` is always null for now — F1-4 still owns building the real category
- * mapping table; nothing populates it yet.
+ * `googleProductCategory` resolves via google-category-mapping.ts, keyed by category+pet-type —
+ * null for any combination that mapping doesn't have a real entry for yet.
  */
 export interface NormalizedProduct {
     /** Unique per variant — the ProductVariant SKU (Google's required `id`). */
@@ -55,7 +55,8 @@ export interface NormalizedProduct {
     identifierExists: boolean;
     /** Collection names the product belongs to, root-first. */
     categoryPath: string[];
-    /** Google's own taxonomy id/path — null until F1-4 builds the mapping table. */
+    /** Google's own taxonomy path (see google-category-mapping.ts) — null when the product's
+     *  category/pet-type combination has no mapping entry yet. */
     googleProductCategory: string | null;
     /** From `Product.customFields.adsEligible` (F1-1) — e.g. `"alto-margen"` or null. */
     customLabel0: string | null;
