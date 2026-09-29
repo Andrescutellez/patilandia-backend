@@ -48,6 +48,7 @@ import { PatilandiaProcurementPlugin } from './plugins/patilandia-procurement/pa
 import { PatilandiaBoldPlugin } from './plugins/patilandia-bold/patilandia-bold.plugin';
 import { patilandiaFulfillmentHandler } from './config/patilandia-fulfillment-handler';
 import { PatilandiaMipaquetePlugin } from './plugins/patilandia-mipaquete/patilandia-mipaquete.plugin';
+import { PatilandiaFeedsPlugin } from './plugins/patilandia-feeds/patilandia-feeds.plugin';
 import { mipaqueteBogotaChecker, mipaqueteBogotaCalculator } from './plugins/patilandia-mipaquete/shipping/mipaquete-bogota';
 import { mipaqueteCarrierChecker, mipaqueteCarrierCalculator } from './plugins/patilandia-mipaquete/shipping/mipaquete-carrier';
 import { mipaqueteFulfillmentHandler } from './plugins/patilandia-mipaquete/shipping/mipaquete-fulfillment-handler';
@@ -68,6 +69,15 @@ const trustProxy = process.env.TRUST_PROXY ? +process.env.TRUST_PROXY : false;
 const storefrontUrl = process.env.STOREFRONT_URL ?? (IS_DEV ? 'http://localhost:3001' : undefined);
 if (!storefrontUrl) {
     throw new Error('STOREFRONT_URL must be set in production');
+}
+// Public URL prefix for asset image links (Google/Meta/TikTok product feeds and any other
+// external consumer need absolute URLs). In dev, AssetServerPlugin derives it from the request
+// itself, so this stays undefined; in production it must be set explicitly, same pattern as
+// storefrontUrl above — otherwise every image link would silently fall back to the plugin's
+// factory placeholder (https://www.my-shop.com/assets/), which happened once already.
+const assetUrlPrefix = process.env.ASSET_URL_PREFIX;
+if (!IS_DEV && !assetUrlPrefix) {
+    throw new Error('ASSET_URL_PREFIX must be set in production');
 }
 // Bold (pasarela de pago real, Colombia) — ambas llaves son de sandbox mientras se prueba la
 // integración. BOLD_SANDBOX controla cómo se firma el webhook (Bold usa un string vacío como
@@ -352,6 +362,24 @@ export const config: VendureConfig = {
                     },
                 ],
             },
+            // Admin-only, read by patilandia-feeds (Dashboard checklist + eventually the Google/Meta
+            // custom_label mapping, see the Feeds y SEO roadmap in the vault). Deliberately manual, not
+            // computed from patilandia-procurement's supplier cost: not every product has a supplier
+            // loaded there, so an automatic margin calculation would silently misfire for those. Never
+            // exposed to the Shop API — customers have no reason to see this.
+            {
+                name: 'adsEligible',
+                type: 'boolean',
+                defaultValue: false,
+                public: false,
+                label: [{ languageCode: LanguageCode.es, value: 'Pautar en Ads' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Si está activado, este producto entra en las campañas pagas de Google/Meta Ads (ej. los de buen margen). No afecta si aparece gratis en Google Free Listings — eso depende solo de estar publicado.',
+                    },
+                ],
+            },
         ],
         // weightKg/length/width/height are what patilandia-mipaquete's packing.ts sums/maxes into
         // the single-package quote sent to Mi Paquete (see that plugin's README-style comment at
@@ -483,10 +511,9 @@ export const config: VendureConfig = {
         AssetServerPlugin.init({
             route: 'assets',
             assetUploadDir: path.join(__dirname, '../static/assets'),
-            // For local dev, the correct value for assetUrlPrefix should
-            // be guessed correctly, but for production it will usually need
-            // to be set manually to match your production url.
-            assetUrlPrefix: IS_DEV ? undefined : 'https://www.my-shop.com/assets/',
+            // In dev this stays undefined and AssetServerPlugin derives the URL from the
+            // request; in production it uses ASSET_URL_PREFIX (validated above).
+            assetUrlPrefix,
             // LocalAssetStorageStrategy builds each asset's public identifier with Node's
             // platform `path.join`, which emits backslashes on Windows (e.g.
             // "assets/preview\aa\file.png") — invalid in a URL and broken in any browser.
@@ -552,5 +579,6 @@ export const config: VendureConfig = {
             storefrontUrl,
         }),
         PatilandiaMipaquetePlugin,
+        PatilandiaFeedsPlugin.init({}),
     ],
 };
