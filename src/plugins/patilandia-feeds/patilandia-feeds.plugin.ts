@@ -1,6 +1,7 @@
 import { PluginCommonModule, Type, VendurePlugin } from '@vendure/core';
 
 import { PATILANDIA_FEEDS_PLUGIN_OPTIONS } from './constants';
+import { FeedCatalogService } from './services/feed-catalog.service';
 import { PluginInitOptions } from './types';
 
 /**
@@ -13,7 +14,10 @@ import { PluginInitOptions } from './types';
  */
 @VendurePlugin({
     imports: [PluginCommonModule],
-    providers: [{ provide: PATILANDIA_FEEDS_PLUGIN_OPTIONS, useFactory: () => PatilandiaFeedsPlugin.options }],
+    providers: [
+        { provide: PATILANDIA_FEEDS_PLUGIN_OPTIONS, useFactory: () => PatilandiaFeedsPlugin.options },
+        FeedCatalogService,
+    ],
     configuration: config => config,
     compatibility: '^3.0.0',
     dashboard: './dashboard/index.tsx',

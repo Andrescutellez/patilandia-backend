@@ -597,6 +597,6 @@ export const config: VendureConfig = {
             storefrontUrl,
         }),
         PatilandiaMipaquetePlugin,
-        PatilandiaFeedsPlugin.init({}),
+        PatilandiaFeedsPlugin.init({ storefrontUrl }),
     ],
 };
