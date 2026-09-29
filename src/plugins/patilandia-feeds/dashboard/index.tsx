@@ -19,14 +19,19 @@ import gql from 'graphql-tag';
 import { Rss } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+interface FeedsProductCustomFields {
+    includeInFeed: boolean;
+    adsEligible: boolean;
+}
+
 interface FeedsProduct {
     id: string;
     name: string;
     enabled: boolean;
-    customFields: {
-        adsEligible: boolean;
-    };
+    customFields: FeedsProductCustomFields;
 }
+
+type FeedsToggleField = keyof FeedsProductCustomFields;
 
 const PRODUCT_LIST_QUERY = gql`
     query PatilandiaFeedsProductList {
@@ -37,6 +42,7 @@ const PRODUCT_LIST_QUERY = gql`
                 name
                 enabled
                 customFields {
+                    includeInFeed
                     adsEligible
                 }
             }
@@ -44,9 +50,23 @@ const PRODUCT_LIST_QUERY = gql`
     }
 `;
 
+// Two separate mutation documents on purpose — each selects only its own customField inside the
+// inline `customFields: {...}` literal, so the other field is never part of what's sent and can
+// never be accidentally overwritten by a toggle on the other column.
+const SET_INCLUDE_IN_FEED_MUTATION = gql`
+    mutation PatilandiaFeedsSetIncludeInFeed($id: ID!, $value: Boolean!) {
+        updateProduct(input: { id: $id, customFields: { includeInFeed: $value } }) {
+            id
+            customFields {
+                includeInFeed
+            }
+        }
+    }
+`;
+
 const SET_ADS_ELIGIBLE_MUTATION = gql`
-    mutation PatilandiaFeedsSetAdsEligible($id: ID!, $adsEligible: Boolean!) {
-        updateProduct(input: { id: $id, customFields: { adsEligible: $adsEligible } }) {
+    mutation PatilandiaFeedsSetAdsEligible($id: ID!, $value: Boolean!) {
+        updateProduct(input: { id: $id, customFields: { adsEligible: $value } }) {
             id
             customFields {
                 adsEligible
@@ -55,10 +75,15 @@ const SET_ADS_ELIGIBLE_MUTATION = gql`
     }
 `;
 
+const FIELD_MUTATIONS: Record<FeedsToggleField, typeof SET_INCLUDE_IN_FEED_MUTATION> = {
+    includeInFeed: SET_INCLUDE_IN_FEED_MUTATION,
+    adsEligible: SET_ADS_ELIGIBLE_MUTATION,
+};
+
 function AdsEligibilityTab() {
     const [products, setProducts] = useState<FeedsProduct[]>([]);
     const [loading, setLoading] = useState(true);
-    const [savingId, setSavingId] = useState<string | null>(null);
+    const [savingKey, setSavingKey] = useState<string | null>(null);
 
     useEffect(() => {
         api.query<{ products: { totalItems: number; items: FeedsProduct[] } }>(PRODUCT_LIST_QUERY)
@@ -67,15 +92,18 @@ function AdsEligibilityTab() {
             .finally(() => setLoading(false));
     }, []);
 
-    async function toggle(product: FeedsProduct, checked: boolean) {
-        setSavingId(product.id);
+    async function toggle(product: FeedsProduct, field: FeedsToggleField, checked: boolean) {
+        const key = `${product.id}:${field}`;
+        setSavingKey(key);
         try {
-            await api.mutate(SET_ADS_ELIGIBLE_MUTATION, { id: product.id, adsEligible: checked });
-            setProducts(prev => prev.map(p => (p.id === product.id ? { ...p, customFields: { adsEligible: checked } } : p)));
+            await api.mutate(FIELD_MUTATIONS[field], { id: product.id, value: checked });
+            setProducts(prev =>
+                prev.map(p => (p.id === product.id ? { ...p, customFields: { ...p.customFields, [field]: checked } } : p)),
+            );
         } catch (err) {
             toast.error('No se pudo guardar', { description: err instanceof Error ? err.message : undefined });
         } finally {
-            setSavingId(null);
+            setSavingKey(null);
         }
     }
 
@@ -84,15 +112,16 @@ function AdsEligibilityTab() {
     return (
         <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-                Marcá qué productos entran en campañas pagas de Google/Meta Ads (ej. los que dejan buen margen). No
-                afecta si el producto aparece gratis en Google Free Listings — eso depende solo de estar publicado,
-                no de esta marca.
+                "Incluir en feed" decide si el producto entra a Google Free Listings (gratis). "Pautar en Ads" decide
+                si además entra en campañas pagas (ej. los que dejan buen margen) — solo tiene efecto si también está
+                incluido en el feed. Ninguno de los dos afecta si el producto se vende en la tienda propia.
             </p>
             <Table>
                 <TableHeader>
                     <TableRow>
                         <TableHead>Producto</TableHead>
                         <TableHead>Estado</TableHead>
+                        <TableHead>Incluir en feed</TableHead>
                         <TableHead>Pautar en Ads</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -107,9 +136,16 @@ function AdsEligibilityTab() {
                             </TableCell>
                             <TableCell>
                                 <Switch
+                                    checked={product.customFields.includeInFeed}
+                                    disabled={savingKey === `${product.id}:includeInFeed`}
+                                    onCheckedChange={checked => toggle(product, 'includeInFeed', checked)}
+                                />
+                            </TableCell>
+                            <TableCell>
+                                <Switch
                                     checked={product.customFields.adsEligible}
-                                    disabled={savingId === product.id}
-                                    onCheckedChange={checked => toggle(product, checked)}
+                                    disabled={savingKey === `${product.id}:adsEligible`}
+                                    onCheckedChange={checked => toggle(product, 'adsEligible', checked)}
                                 />
                             </TableCell>
                         </TableRow>

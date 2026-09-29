@@ -362,11 +362,29 @@ export const config: VendureConfig = {
                     },
                 ],
             },
-            // Admin-only, read by patilandia-feeds (Dashboard checklist + eventually the Google/Meta
-            // custom_label mapping, see the Feeds y SEO roadmap in the vault). Deliberately manual, not
-            // computed from patilandia-procurement's supplier cost: not every product has a supplier
-            // loaded there, so an automatic margin calculation would silently misfire for those. Never
-            // exposed to the Shop API — customers have no reason to see this.
+            // Admin-only, read by patilandia-feeds (Dashboard checklist). `includeInFeed` gates the
+            // product feed itself (Google Free Listings today, Meta/TikTok later — same
+            // NormalizedProduct pipeline); `adsEligible` gates paid Ads campaigns on top of that.
+            // Both default to false on purpose (opt-in, confirmed with the user 2026-09-29): a
+            // product only reaches Google once someone deliberately decides it's ready — new
+            // products often go `enabled` in the store before their feed data (real weight/images
+            // reviewed/etc.) is actually finished. `adsEligible` is additionally never computed
+            // automatically from patilandia-procurement's supplier cost: not every product has a
+            // supplier loaded there, so an automatic margin calculation would silently misfire for
+            // those. Neither is exposed to the Shop API — customers have no reason to see either.
+            {
+                name: 'includeInFeed',
+                type: 'boolean',
+                defaultValue: false,
+                public: false,
+                label: [{ languageCode: LanguageCode.es, value: 'Incluir en feed de productos' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.es,
+                        value: 'Si está activado, este producto entra al feed de Google Free Listings (y a futuro Meta/TikTok) — visibilidad gratis en Google Shopping. No afecta si se vende en la tienda propia, eso depende solo de estar publicado.',
+                    },
+                ],
+            },
             {
                 name: 'adsEligible',
                 type: 'boolean',
@@ -376,7 +394,7 @@ export const config: VendureConfig = {
                 description: [
                     {
                         languageCode: LanguageCode.es,
-                        value: 'Si está activado, este producto entra en las campañas pagas de Google/Meta Ads (ej. los de buen margen). No afecta si aparece gratis en Google Free Listings — eso depende solo de estar publicado.',
+                        value: 'Si está activado, este producto entra en las campañas pagas de Google/Meta Ads (ej. los de buen margen). Solo tiene efecto si "Incluir en feed de productos" también está activado.',
                     },
                 ],
             },
